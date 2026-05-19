@@ -1,6 +1,6 @@
 # EduGuard-AI · 智能学业预警系统
 
-> 面向高校（北方民族大学等）的学生学业完成情况自动预警与智能问答系统。
+> 面向高校的学生学业完成情况自动预警与智能问答系统。
 
 ![status](https://img.shields.io/badge/status-WIP-orange) ![license](https://img.shields.io/badge/license-MIT-blue) ![stack](https://img.shields.io/badge/stack-Vue3%20%2B%20FastAPI%20%2B%20PostgreSQL-green)
 
