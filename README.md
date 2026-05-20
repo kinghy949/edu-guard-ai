@@ -129,9 +129,9 @@ npm run dev
 | M2 | 培养方案比对引擎 + 预警生成 | ✅ |
 | M3 | 通知中心（邮件 / 企微 / 钉钉 / 短信） | ✅ |
 | M4 | AI 学业问答 | ✅ |
-| M5 | 管理后台 + 权限 + 部署文档 | ⏳ |
+| M5 | 前端页面 + 管理后台 + 部署文档 | ✅ |
 
-详见 [`docs/roadmap.md`](docs/roadmap.md)。
+详见 [`docs/roadmap.md`](docs/roadmap.md)、[`docs/deploy.md`](docs/deploy.md)。
 
 ## 七、文档
 

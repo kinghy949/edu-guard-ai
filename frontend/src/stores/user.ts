@@ -1,16 +1,41 @@
 import { defineStore } from 'pinia'
 
+import { authApi, type User } from '../api/endpoints'
+
+const TOKEN_KEY = 'eduguard.token'
+
 export const useUserStore = defineStore('user', {
   state: () => ({
-    token: '' as string,
-    profile: null as null | { id: number; name: string; role: string },
+    token: localStorage.getItem(TOKEN_KEY) ?? '',
+    profile: null as User | null,
   }),
+  getters: {
+    isLoggedIn: (s) => !!s.token,
+    isStaff: (s) =>
+      s.profile?.role === 'admin' || s.profile?.role === 'counselor',
+    isAdmin: (s) => s.profile?.role === 'admin',
+  },
   actions: {
     setToken(t: string) {
       this.token = t
+      if (t) localStorage.setItem(TOKEN_KEY, t)
+      else localStorage.removeItem(TOKEN_KEY)
+    },
+    async login(username: string, password: string) {
+      const token = await authApi.login(username, password)
+      this.setToken(token)
+      await this.fetchMe()
+    },
+    async fetchMe() {
+      if (!this.token) return
+      try {
+        this.profile = await authApi.me()
+      } catch {
+        this.logout()
+      }
     },
     logout() {
-      this.token = ''
+      this.setToken('')
       this.profile = null
     },
   },
