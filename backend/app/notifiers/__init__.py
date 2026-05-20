@@ -1,12 +1,20 @@
 """通知渠道适配器。
 
-每个 notifier 实现统一接口 ``send(target, subject, content, **kwargs)``，
-通过 ``NotificationConfig`` 启停。
+每个 notifier 实现统一接口 ``send(target, subject, content, config) -> SendOutcome``。
 """
+from app.notifiers.base import Notifier, SendOutcome
+from app.notifiers.dingtalk import DingTalkNotifier
+from app.notifiers.email import EmailNotifier
+from app.notifiers.inbox import InboxNotifier
+from app.notifiers.sms import SmsNotifier
+from app.notifiers.wecom import WecomNotifier
 
-# TODO(M3):
-# - email.py      SMTP
-# - wecom.py      企业微信群机器人 Webhook
-# - dingtalk.py   钉钉群机器人 Webhook
-# - sms.py        阿里云短信
-# - inbox.py      站内消息
+REGISTRY: dict[str, Notifier] = {
+    InboxNotifier.channel: InboxNotifier(),
+    EmailNotifier.channel: EmailNotifier(),
+    WecomNotifier.channel: WecomNotifier(),
+    DingTalkNotifier.channel: DingTalkNotifier(),
+    SmsNotifier.channel: SmsNotifier(),
+}
+
+__all__ = ["REGISTRY", "Notifier", "SendOutcome"]

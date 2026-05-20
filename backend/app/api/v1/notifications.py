@@ -1,0 +1,98 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import select
+
+from app.api.deps import CurrentUser, DbSession, require_admin, require_staff
+from app.api.v1._helpers import apply_updates, get_or_404
+from app.models.notification import Notification, NotificationConfig
+from app.models.user import User, UserRole
+from app.models.warning import Warning
+from app.schemas.notification import (
+    NotificationConfigRead, NotificationConfigUpdate, NotificationRead,
+)
+from app.services.notify_dispatcher import dispatch, dispatch_warning
+
+router = APIRouter()
+
+
+# ----- 通知记录 -----
+
+@router.get("", response_model=list[NotificationRead])
+def list_notifications(
+    db: DbSession,
+    current: CurrentUser,
+    channel: str | None = None,
+    status_: str | None = None,
+    skip: int = 0,
+    limit: int = 100,
+):
+    stmt = select(Notification)
+    if current.role == UserRole.STUDENT:
+        stmt = stmt.where(Notification.user_id == current.id)
+    if channel:
+        stmt = stmt.where(Notification.channel == channel)
+    if status_:
+        stmt = stmt.where(Notification.status == status_)
+    return db.scalars(stmt.order_by(Notification.created_at.desc()).offset(skip).limit(limit)).all()
+
+
+@router.get("/{notification_id}", response_model=NotificationRead)
+def get_notification(notification_id: int, db: DbSession, current: CurrentUser):
+    n = get_or_404(db, Notification, notification_id, "通知")
+    if current.role == UserRole.STUDENT and n.user_id != current.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该通知")
+    return n
+
+
+# ----- 渠道配置（管理员） -----
+
+@router.get("/configs/all", response_model=list[NotificationConfigRead], dependencies=[Depends(require_admin)])
+def list_configs(db: DbSession):
+    return db.scalars(select(NotificationConfig)).all()
+
+
+@router.put("/configs/{channel}", response_model=NotificationConfigRead, dependencies=[Depends(require_admin)])
+def upsert_config(channel: str, payload: NotificationConfigUpdate, db: DbSession, current: CurrentUser):
+    cfg = db.scalar(select(NotificationConfig).where(NotificationConfig.channel == channel))
+    if not cfg:
+        cfg = NotificationConfig(channel=channel, enabled=bool(payload.enabled), config=payload.config, updated_by=current.id)
+        db.add(cfg)
+    else:
+        apply_updates(cfg, payload.model_dump(exclude_unset=True))
+        cfg.updated_by = current.id
+    db.commit()
+    db.refresh(cfg)
+    return cfg
+
+
+# ----- 测试 / 触发 -----
+
+class TestSendRequest(BaseModel):
+    channel: str
+    target: str
+    subject: str = "EduGuard-AI 通知测试"
+    content: str = "这是一条测试通知。"
+
+
+@router.post("/test", dependencies=[Depends(require_admin)], summary="测试发送一条通知")
+def test_send(payload: TestSendRequest, db: DbSession):
+    summary = dispatch(
+        db,
+        user=None,
+        target_overrides={payload.channel: payload.target},
+        subject=payload.subject,
+        content=payload.content,
+        channels=[payload.channel],
+    )
+    return summary.__dict__
+
+
+class DispatchWarningRequest(BaseModel):
+    channels: list[str] | None = None
+
+
+@router.post("/warnings/{warning_id}/dispatch", dependencies=[Depends(require_staff)], summary="为某条预警发送通知")
+def dispatch_for_warning(warning_id: int, payload: DispatchWarningRequest, db: DbSession):
+    w = get_or_404(db, Warning, warning_id, "预警")
+    summary = dispatch_warning(db, w, channels=payload.channels)
+    return summary.__dict__

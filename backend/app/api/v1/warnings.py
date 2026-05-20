@@ -10,6 +10,7 @@ from app.models.student import Student
 from app.models.user import UserRole
 from app.models.warning import Warning
 from app.schemas.warning import WarningRead
+from app.services.notify_dispatcher import dispatch_warning
 from app.services.warning_engine import generate_batch, generate_for_student
 
 router = APIRouter()
@@ -21,6 +22,8 @@ class GenerateRequest(BaseModel):
     college: str | None = None
     major: str | None = None
     enroll_year: int | None = None
+    auto_dispatch: bool = False
+    channels: list[str] | None = None
 
 
 class ResolveRequest(BaseModel):
@@ -81,7 +84,19 @@ def generate(payload: GenerateRequest, db: DbSession):
     students = list(db.scalars(stmt))
     if not students:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "未匹配到学生")
-    return generate_batch(db, students, semester=payload.semester)
+    result = generate_batch(db, students, semester=payload.semester)
+    if payload.auto_dispatch:
+        dispatched = sent = failed = 0
+        for w in db.scalars(select(Warning).where(
+            Warning.semester == result["semester"],
+            Warning.student_id.in_([s.id for s in students]),
+        )):
+            s = dispatch_warning(db, w, channels=payload.channels)
+            dispatched += 1
+            sent += s.succeeded
+            failed += s.failed
+        result["dispatched"] = {"warnings": dispatched, "succeeded": sent, "failed": failed}
+    return result
 
 
 @router.post("/students/{student_id}/generate", dependencies=[Depends(require_staff)], summary="单学生触发预警")
