@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.ai import LLMError, NO_CONTEXT_HINT, SYSTEM_PROMPT, build_student_context, chat, chat_stream
+from app.ai import LLMError, NO_CONTEXT_HINT, SYSTEM_PROMPT, build_student_context, chat, chat_stream, load_runtime
 from app.api.deps import CurrentUser, DbSession
 from app.api.v1._helpers import get_or_404
 from app.models.chat import ChatMessage, ChatSession
@@ -95,7 +95,8 @@ def send_message(session_id: int, payload: SendMessageRequest, db: DbSession, cu
 
     messages = _build_messages(db, current, session, payload.content)
     try:
-        reply = chat(messages)
+        runtime = load_runtime(db)
+        reply = chat(messages, runtime=runtime)
     except LLMError as e:
         db.rollback()
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
@@ -116,11 +117,12 @@ async def stream_message(session_id: int, payload: SendMessageRequest, db: DbSes
     db.commit()
 
     messages = _build_messages(db, current, session, payload.content)
+    runtime = load_runtime(db)
 
     async def gen() -> AsyncIterator[bytes]:
         chunks: list[str] = []
         try:
-            async for delta in chat_stream(messages):
+            async for delta in chat_stream(messages, runtime=runtime):
                 chunks.append(delta)
                 yield f"data: {delta}\n\n".encode("utf-8")
         except LLMError as e:

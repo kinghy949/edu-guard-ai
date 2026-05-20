@@ -6,6 +6,7 @@ from app.models.grade import Grade
 from app.models.warning import Warning
 from app.models.notification import Notification, NotificationConfig
 from app.models.chat import ChatSession, ChatMessage
+from app.models.llm_config import LLMConfig
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "NotificationConfig",
     "ChatSession",
     "ChatMessage",
+    "LLMConfig",
 ]

@@ -136,6 +136,27 @@ export const importsApi = {
   },
 }
 
+export interface LLMConfig {
+  id: number
+  base_url: string
+  api_key: string
+  model: string
+  temperature: number
+  enabled: boolean
+  note: string | null
+  updated_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export const llmConfigApi = {
+  get: () => http.get<LLMConfig | null>('/admin/llm-config').then((r) => r.data),
+  update: (payload: Partial<Omit<LLMConfig, 'id' | 'created_at' | 'updated_at' | 'updated_by'>>) =>
+    http.put<LLMConfig>('/admin/llm-config', payload).then((r) => r.data),
+  test: (prompt = '你好，请用一句话介绍你自己。') =>
+    http.post<{ ok: boolean; reply: string }>('/admin/llm-config/test', { prompt }).then((r) => r.data),
+}
+
 export const notificationsApi = {
   listConfigs: () =>
     http.get('/notifications/configs/all').then((r) => r.data),

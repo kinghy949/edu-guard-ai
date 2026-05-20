@@ -1,11 +1,12 @@
 """OpenAI 兼容 chat completions 客户端。
 
-仅依赖 httpx，避免锁定特定 SDK。可切换 DeepSeek / 通义 / Claude（OpenAI 兼容路由）。
+接入方传入 ``base_url`` / ``api_key`` / ``model``；未传则回退读取 settings。
 """
 from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -17,28 +18,54 @@ class LLMError(RuntimeError):
     pass
 
 
-def _headers() -> dict[str, str]:
-    if not settings.LLM_API_KEY:
-        raise LLMError("未配置 LLM_API_KEY")
+@dataclass
+class LLMRuntime:
+    base_url: str
+    api_key: str
+    model: str
+    temperature: float = 0.3
+
+
+def resolve_runtime(
+    *,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    temperature: float | None = None,
+) -> LLMRuntime:
+    rt = LLMRuntime(
+        base_url=(base_url or settings.LLM_BASE_URL).rstrip("/"),
+        api_key=api_key or settings.LLM_API_KEY,
+        model=model or settings.LLM_MODEL,
+        temperature=temperature if temperature is not None else 0.3,
+    )
+    if not rt.api_key:
+        raise LLMError("未配置 LLM API Key")
+    return rt
+
+
+def _headers(rt: LLMRuntime) -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {settings.LLM_API_KEY}",
+        "Authorization": f"Bearer {rt.api_key}",
         "Content-Type": "application/json",
     }
 
 
-def chat(messages: list[dict[str, str]], *, model: str | None = None, temperature: float = 0.3) -> str:
-    """同步获取一次完整回复。"""
-    body: dict[str, Any] = {
-        "model": model or settings.LLM_MODEL,
+def chat(
+    messages: list[dict[str, str]],
+    *,
+    runtime: LLMRuntime | None = None,
+    **overrides: Any,
+) -> str:
+    rt = runtime or resolve_runtime(**overrides)
+    body = {
+        "model": rt.model,
         "messages": messages,
-        "temperature": temperature,
+        "temperature": rt.temperature,
         "stream": False,
     }
     try:
-        r = httpx.post(
-            f"{settings.LLM_BASE_URL.rstrip('/')}/chat/completions",
-            json=body, headers=_headers(), timeout=60,
-        )
+        r = httpx.post(f"{rt.base_url}/chat/completions", json=body, headers=_headers(rt), timeout=60)
         r.raise_for_status()
         data = r.json()
         return data["choices"][0]["message"]["content"]
@@ -51,20 +78,20 @@ def chat(messages: list[dict[str, str]], *, model: str | None = None, temperatur
 async def chat_stream(
     messages: list[dict[str, str]],
     *,
-    model: str | None = None,
-    temperature: float = 0.3,
+    runtime: LLMRuntime | None = None,
+    **overrides: Any,
 ) -> AsyncIterator[str]:
-    """异步流式生成回复（OpenAI SSE 协议），逐 token 产出文本增量。"""
-    body: dict[str, Any] = {
-        "model": model or settings.LLM_MODEL,
+    rt = runtime or resolve_runtime(**overrides)
+    body = {
+        "model": rt.model,
         "messages": messages,
-        "temperature": temperature,
+        "temperature": rt.temperature,
         "stream": True,
     }
-    url = f"{settings.LLM_BASE_URL.rstrip('/')}/chat/completions"
+    url = f"{rt.base_url}/chat/completions"
     async with httpx.AsyncClient(timeout=httpx.Timeout(60, read=120)) as client:
         try:
-            async with client.stream("POST", url, json=body, headers=_headers()) as r:
+            async with client.stream("POST", url, json=body, headers=_headers(rt)) as r:
                 r.raise_for_status()
                 async for line in r.aiter_lines():
                     if not line or not line.startswith("data:"):

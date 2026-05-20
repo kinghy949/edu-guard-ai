@@ -48,6 +48,36 @@
       </el-card>
     </el-tab-pane>
 
+    <!-- AI 模型配置 -->
+    <el-tab-pane label="AI 模型" name="llm" v-if="user.isAdmin">
+      <el-card>
+        <p class="hint">配置对话式问答使用的 LLM。OpenAI 兼容协议，支持 DashScope / DeepSeek / GLM / 火山豆包等。<br />更新后立即生效，无需重启。api_key 留空表示不修改。</p>
+        <el-form :model="llm" label-width="100px" style="max-width: 720px">
+          <el-form-item label="Base URL">
+            <el-input v-model="llm.base_url" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+          </el-form-item>
+          <el-form-item label="API Key">
+            <el-input v-model="llm.api_key" type="password" show-password :placeholder="llmCurrentKey || '尚未设置'" />
+          </el-form-item>
+          <el-form-item label="Model">
+            <el-input v-model="llm.model" placeholder="qwen-turbo / glm-4-flash / deepseek-chat ..." />
+          </el-form-item>
+          <el-form-item label="Temperature">
+            <el-input-number v-model="llm.temperature" :min="0" :max="2" :step="0.1" />
+          </el-form-item>
+          <el-form-item label="启用">
+            <el-switch v-model="llm.enabled" />
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input v-model="llm.note" />
+          </el-form-item>
+          <el-button type="primary" @click="saveLLM">保存</el-button>
+          <el-button @click="testLLM" :loading="llmTesting">测试连通</el-button>
+        </el-form>
+        <el-alert v-if="llmTestResult" :title="llmTestResult" type="success" style="margin-top: 12px" :closable="false" />
+      </el-card>
+    </el-tab-pane>
+
     <!-- 通知渠道配置 -->
     <el-tab-pane label="通知渠道" name="notify" v-if="user.isAdmin">
       <el-card>
@@ -85,7 +115,7 @@
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 
-import { importsApi, notificationsApi, warningsApi } from '../api/endpoints'
+import { importsApi, llmConfigApi, notificationsApi, warningsApi } from '../api/endpoints'
 import { useUserStore } from '../stores/user'
 
 const user = useUserStore()
@@ -164,7 +194,55 @@ async function testSend() {
   ElMessage.success(JSON.stringify(r))
 }
 
-onMounted(loadConfigs)
+const llm = reactive({
+  base_url: '',
+  api_key: '',
+  model: '',
+  temperature: 0.3,
+  enabled: true,
+  note: '',
+})
+const llmCurrentKey = ref('')
+const llmTesting = ref(false)
+const llmTestResult = ref('')
+
+async function loadLLM() {
+  if (!user.isAdmin) return
+  const cfg = await llmConfigApi.get()
+  if (cfg) {
+    llm.base_url = cfg.base_url
+    llm.api_key = ''
+    llm.model = cfg.model
+    llm.temperature = cfg.temperature
+    llm.enabled = cfg.enabled
+    llm.note = cfg.note ?? ''
+    llmCurrentKey.value = cfg.api_key  // 脱敏值
+  }
+}
+
+async function saveLLM() {
+  const payload = { ...llm }
+  if (!payload.api_key.trim()) delete (payload as Record<string, unknown>).api_key
+  await llmConfigApi.update(payload)
+  ElMessage.success('已保存')
+  loadLLM()
+}
+
+async function testLLM() {
+  llmTesting.value = true
+  llmTestResult.value = ''
+  try {
+    const r = await llmConfigApi.test()
+    llmTestResult.value = `回复：${r.reply}`
+  } finally {
+    llmTesting.value = false
+  }
+}
+
+onMounted(() => {
+  loadConfigs()
+  loadLLM()
+})
 </script>
 
 <style scoped>
