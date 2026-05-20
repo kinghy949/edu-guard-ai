@@ -1,3 +1,4 @@
+import json
 from typing import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, status
@@ -124,15 +125,16 @@ async def stream_message(session_id: int, payload: SendMessageRequest, db: DbSes
         try:
             async for delta in chat_stream(messages, runtime=runtime):
                 chunks.append(delta)
-                yield f"data: {delta}\n\n".encode("utf-8")
+                # JSON 编码以兼容 delta 内含换行符等
+                yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n".encode("utf-8")
         except LLMError as e:
-            yield f"event: error\ndata: {e}\n\n".encode("utf-8")
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n".encode("utf-8")
             return
         final = "".join(chunks)
         if final:
             db.add(ChatMessage(session_id=session.id, role="assistant", content=final))
             db.commit()
-        yield b"event: done\ndata: [DONE]\n\n"
+        yield b"event: done\ndata: {}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

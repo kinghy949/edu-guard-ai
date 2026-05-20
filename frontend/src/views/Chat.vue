@@ -133,20 +133,37 @@ async function send() {
     const reader = resp.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
+    let currentEvent = 'message'
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
       buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() ?? ''
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const payload = line.slice(6)
-          if (payload === '[DONE]') continue
-          streamingText.value += payload
+      // SSE 以 \n\n 分帧
+      const frames = buf.split('\n\n')
+      buf = frames.pop() ?? ''
+      for (const frame of frames) {
+        currentEvent = 'message'
+        let dataLine = ''
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event: ')) currentEvent = line.slice(7).trim()
+          else if (line.startsWith('data: ')) dataLine = line.slice(6)
+        }
+        if (!dataLine) continue
+        try {
+          const parsed = JSON.parse(dataLine)
+          if (currentEvent === 'error') {
+            ElMessage.error(parsed.error || 'LLM 出错')
+            continue
+          }
+          if (currentEvent === 'done') continue
+          if (parsed.delta) {
+            streamingText.value += parsed.delta
+            scrollBottom()
+          }
+        } catch {
+          // 兼容旧格式：当作原始文本拼接
+          streamingText.value += dataLine
           scrollBottom()
-        } else if (line.startsWith('event: error')) {
-          ElMessage.error('LLM 出错')
         }
       }
     }
