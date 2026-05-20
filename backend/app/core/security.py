@@ -12,12 +12,20 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 天
 _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def _truncate(password: str) -> str:
+    # bcrypt 限制 72 字节，超出部分静默忽略；新版 bcrypt 会直接报错
+    encoded = password.encode("utf-8")
+    if len(encoded) <= 72:
+        return password
+    return encoded[:72].decode("utf-8", errors="ignore")
+
+
 def hash_password(password: str) -> str:
-    return _pwd.hash(password)
+    return _pwd.hash(_truncate(password))
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return _pwd.verify(password, password_hash)
+    return _pwd.verify(_truncate(password), password_hash)
 
 
 def create_access_token(subject: str | int, extra: dict[str, Any] | None = None) -> str:

@@ -19,6 +19,7 @@ cp backend/.env.example backend/.env
 #  - LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
 
 docker compose -f docker-compose.prod.yml up -d --build
+# 国内服务器构建慢可加: PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple docker compose -f docker-compose.prod.yml build
 # 前端经 nginx 暴露 80 端口，并把 /api/ 反代到 backend:8000
 # 启动时自动执行 alembic upgrade head
 
