@@ -1,4 +1,9 @@
-# TODO(M4): AI 学业问答
-# - llm_client.py    OpenAI 兼容客户端
-# - prompts.py       系统 Prompt 模板
-# - context.py       学生上下文拼装（培养方案 + 缺口 + 已修）
+from app.ai.context import build_student_context
+from app.ai.llm_client import LLMError, chat, chat_stream
+from app.ai.prompts import NO_CONTEXT_HINT, SYSTEM_PROMPT
+
+__all__ = [
+    "build_student_context",
+    "chat", "chat_stream", "LLMError",
+    "SYSTEM_PROMPT", "NO_CONTEXT_HINT",
+]

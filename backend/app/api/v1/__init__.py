@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    auth, courses, grades, imports, notifications, progress, programs,
+    auth, chat, courses, grades, imports, notifications, progress, programs,
     students, users, warnings,
 )
 
@@ -23,5 +23,4 @@ router.include_router(imports.router, prefix="/imports", tags=["imports"])
 router.include_router(progress.router, prefix="/progress", tags=["progress"])
 router.include_router(warnings.router, prefix="/warnings", tags=["warnings"])
 router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
-
-# TODO(M4): chat
+router.include_router(chat.router, prefix="/chat", tags=["chat"])
