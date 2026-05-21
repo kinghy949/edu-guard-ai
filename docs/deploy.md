@@ -21,13 +21,30 @@ cp backend/.env.example backend/.env
 docker compose -f docker-compose.prod.yml up -d --build
 # 国内服务器构建慢可加: PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple docker compose -f docker-compose.prod.yml build
 # 前端经 nginx 暴露 80 端口，并把 /api/ 反代到 backend:8000
-# 启动时自动执行 alembic upgrade head
-
-# 创建初始管理员
-docker compose -f docker-compose.prod.yml exec backend python -m scripts.create_admin admin <strong-password>
+#
+# 后端启动时自动：
+#   1) alembic upgrade head （建表 / 升级到最新版本）
+#   2) python -m scripts.bootstrap （幂等）
+#        - 库内无用户时按 BOOTSTRAP_ADMIN_* 创建默认管理员
+#        - 若 SEED_DEMO=true 且无任何培养方案则导入演示数据
+#   3) 启动 uvicorn
+#
+# 如需自定义首次管理员账号或关闭演示数据，部署前编辑 backend/.env：
+#   BOOTSTRAP_ADMIN_USERNAME=admin
+#   BOOTSTRAP_ADMIN_PASSWORD=<强密码>
+#   SEED_DEMO=false   # 生产建议关掉，避免引入测试数据
 ```
 
-打开 `http://<server-ip>/` 即可访问，登录后台后导入数据。
+打开 `http://<server-ip>/` 即可访问；默认账号 `admin / admin123`（务必首次部署前改密码）。
+
+## 演示数据
+
+`SEED_DEMO=true` 时首次启动会自动生成：3 个培养方案、97 门课程、25 名学生、1 名辅导员、24 条预警（含已处理）、通知与 AI 会话样例。
+后续启动不会重复导入。手动重新执行：
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python -m scripts.seed_demo
+```
 
 ## 反向代理与 HTTPS
 
