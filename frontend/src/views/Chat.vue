@@ -28,11 +28,14 @@
       <div class="messages" ref="msgsEl">
         <div v-for="m in messages" :key="m.id || m.content" :class="['msg', m.role]">
           <div class="role">{{ m.role === 'user' ? '我' : 'AI 助手' }}</div>
-          <div class="bubble">{{ m.content }}</div>
+          <div class="bubble" v-if="m.role === 'user'">{{ m.content }}</div>
+          <div class="bubble markdown" v-else v-html="render(m.content)"></div>
         </div>
         <div v-if="streaming" class="msg assistant">
           <div class="role">AI 助手</div>
-          <div class="bubble">{{ streamingText }}<span class="cursor">▍</span></div>
+          <div class="bubble markdown">
+            <span v-html="render(streamingText)"></span><span class="cursor">▍</span>
+          </div>
         </div>
       </div>
 
@@ -52,12 +55,22 @@
 
 <script setup lang="ts">
 import { Delete } from '@element-plus/icons-vue'
+import DOMPurify from 'dompurify'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { marked } from 'marked'
 import { nextTick, onMounted, ref } from 'vue'
 
 import { apiBase } from '../api'
 import { chatApi, type ChatMessage, type ChatSession } from '../api/endpoints'
 import { useUserStore } from '../stores/user'
+
+marked.setOptions({ breaks: true, gfm: true })
+
+function render(text: string): string {
+  if (!text) return ''
+  const raw = marked.parse(text, { async: false }) as string
+  return DOMPurify.sanitize(raw)
+}
 
 const user = useUserStore()
 const sessions = ref<ChatSession[]>([])
@@ -201,10 +214,42 @@ onMounted(loadSessions)
 .messages { flex: 1; overflow: auto; padding: 8px 0; }
 .msg { margin-bottom: 14px; }
 .msg .role { font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
-.msg .bubble { display: inline-block; padding: 10px 14px; border-radius: 10px; max-width: 80%; white-space: pre-wrap; line-height: 1.55; }
+.msg .bubble { display: inline-block; padding: 10px 14px; border-radius: 10px; max-width: 85%; white-space: pre-wrap; line-height: 1.55; text-align: left; word-break: break-word; }
+.msg .bubble.markdown { white-space: normal; }
 .msg.user { text-align: right; }
 .msg.user .bubble { background: #dbeafe; color: #1e3a8a; }
 .msg.assistant .bubble { background: #f1f5f9; color: #0f172a; }
+.bubble.markdown { line-height: 1.7; }
+.bubble.markdown :deep(p) { margin: 0 0 8px; }
+.bubble.markdown :deep(p:last-child) { margin-bottom: 0; }
+.bubble.markdown :deep(ul),
+.bubble.markdown :deep(ol) { padding-left: 22px; margin: 6px 0; }
+.bubble.markdown :deep(li) { margin: 2px 0; }
+.bubble.markdown :deep(li > p) { margin: 0; }
+.bubble.markdown :deep(strong) { color: #0f172a; font-weight: 600; }
+.bubble.markdown :deep(code) {
+  background: rgba(15, 23, 42, 0.08); padding: 1px 6px; border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em;
+}
+.bubble.markdown :deep(pre) {
+  background: #0f172a; color: #e2e8f0; padding: 10px 12px; border-radius: 6px;
+  overflow-x: auto; margin: 8px 0;
+}
+.bubble.markdown :deep(pre code) { background: transparent; padding: 0; color: inherit; }
+.bubble.markdown :deep(blockquote) {
+  border-left: 3px solid #cbd5e1; padding: 2px 10px; color: #475569;
+  background: rgba(148, 163, 184, 0.12); margin: 6px 0;
+}
+.bubble.markdown :deep(h1),
+.bubble.markdown :deep(h2),
+.bubble.markdown :deep(h3) { margin: 10px 0 6px; font-weight: 600; }
+.bubble.markdown :deep(h1) { font-size: 1.15em; }
+.bubble.markdown :deep(h2) { font-size: 1.08em; }
+.bubble.markdown :deep(h3) { font-size: 1.02em; }
+.bubble.markdown :deep(table) { border-collapse: collapse; margin: 6px 0; }
+.bubble.markdown :deep(th),
+.bubble.markdown :deep(td) { border: 1px solid #cbd5e1; padding: 4px 8px; }
+.bubble.markdown :deep(a) { color: #2563eb; }
 .cursor { animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 .composer { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
