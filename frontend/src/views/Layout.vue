@@ -1,7 +1,7 @@
 <template>
   <el-container class="layout">
     <el-aside width="220px" class="aside">
-      <div class="logo">EduGuard-AI</div>
+      <div class="logo">基于AI的智能学业预警系统</div>
       <el-menu :default-active="route.path" router :collapse="false" background-color="#1f2937" text-color="#cbd5e1" active-text-color="#60a5fa">
         <el-menu-item index="/dashboard">
           <el-icon><Histogram /></el-icon><span>学业完成度</span>
@@ -74,7 +74,7 @@ function logout() {
 <style scoped>
 .layout { height: 100vh; }
 .aside { background: #1f2937; color: #fff; }
-.logo { color: #fff; font-size: 18px; font-weight: 600; padding: 18px 20px; letter-spacing: 1px; }
+.logo { color: #fff; font-size: 15px; font-weight: 600; padding: 18px 16px; letter-spacing: 0.5px; line-height: 1.4; }
 :deep(.el-menu) { border-right: none; }
 .header { display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #eee; }
 .title { font-size: 18px; font-weight: 600; }
