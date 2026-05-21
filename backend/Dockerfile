@@ -2,25 +2,26 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 国内默认走清华镜像（覆盖最全；阿里云 mirror 部分包元数据会回链 pypi 触发超时）。
-# 国外服务器：--build-arg PIP_INDEX_URL=https://pypi.org/simple --build-arg PIP_TRUSTED_HOST=
+# 国内默认走清华镜像。国外: --build-arg PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 ENV PIP_INDEX_URL=$PIP_INDEX_URL
 ENV PIP_TRUSTED_HOST=$PIP_TRUSTED_HOST
-ENV PIP_DEFAULT_TIMEOUT=120
-ENV PIP_RETRIES=10
+ENV PIP_DEFAULT_TIMEOUT=180
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# 1) 预装 build 后端，避免 pip install -e . 触发 PEP 517 隔离环境
-#    （原本会另起一个隔离 pip 重新装 setuptools，慢且常超时）
-RUN pip install --no-cache-dir setuptools>=68 wheel
+# 安装 uv（Rust 实现的包管理器，HTTP/2 并发 + 强重试，对国内烂网络容忍度远高于 pip）
+RUN pip install --no-cache-dir uv
+
+# uv 也读 PIP_INDEX_URL，无需额外配置
+ENV UV_HTTP_TIMEOUT=180
+ENV UV_CONCURRENT_DOWNLOADS=4
 
 COPY pyproject.toml ./
 COPY . .
 
-# 2) --no-build-isolation 复用上面已装的 setuptools，跳过隔离构建
-RUN pip install --no-cache-dir --no-build-isolation -e .
+# uv pip install: 安装到系统 Python，速度比 pip 快很多
+RUN uv pip install --system --no-cache -e .
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
