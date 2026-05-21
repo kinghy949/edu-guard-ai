@@ -139,11 +139,13 @@ LLM_MODEL=qwen-turbo
 ## 四、构建并启动
 
 ```bash
-# 国内构建用清华 pip 镜像，加速 backend 镜像构建
-PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-  sudo -E docker compose -f docker-compose.prod.yml build
-
+# backend 镜像默认走清华 pip 源（在 Dockerfile 内），直接构建即可
+sudo docker compose -f docker-compose.prod.yml build
 sudo docker compose -f docker-compose.prod.yml up -d
+
+# 如在国外服务器想用 pypi 官方源：
+#   sudo docker compose -f docker-compose.prod.yml build \
+#     --build-arg PIP_INDEX_URL=https://pypi.org/simple
 
 # 跟踪启动日志，等到 Uvicorn running 出现
 sudo docker compose -f docker-compose.prod.yml logs -f backend
