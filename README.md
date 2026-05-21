@@ -137,6 +137,12 @@ npm run dev
 
 - [架构说明](docs/architecture.md)
 - [数据模型](docs/data-model.md)
+- [操作手册](docs/operations.md) — 默认账号、AI 模型、通知渠道、运维命令
+- [部署指南](docs/deploy.md)
+- [批量导入模板](docs/import-templates.md)
+- [预警规则](docs/warning-rules.md)
+- [AI 学业问答](docs/ai-chat.md)
+- [通知中心](docs/notifications.md)
 - [路线图](docs/roadmap.md)
 
 ## 八、贡献
