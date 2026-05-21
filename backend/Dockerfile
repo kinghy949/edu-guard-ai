@@ -2,20 +2,25 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 默认走阿里云 pip 镜像（阿里云 ECS 内网最快；国内通用也快）。
-# 关键：用 ENV 而非 pip config，PEP 517 build isolation 的子进程才会继承。
-# 国外服务器可覆盖：--build-arg PIP_INDEX_URL=https://pypi.org/simple --build-arg PIP_TRUSTED_HOST=
-ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
-ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+# 国内默认走清华镜像（覆盖最全；阿里云 mirror 部分包元数据会回链 pypi 触发超时）。
+# 国外服务器：--build-arg PIP_INDEX_URL=https://pypi.org/simple --build-arg PIP_TRUSTED_HOST=
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 ENV PIP_INDEX_URL=$PIP_INDEX_URL \
     PIP_TRUSTED_HOST=$PIP_TRUSTED_HOST \
     PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# 1) 预装 build 后端，避免 pip install -e . 触发 PEP 517 隔离环境
+#    （原本会另起一个隔离 pip 重新装 setuptools，慢且常超时）
+RUN pip install --no-cache-dir setuptools>=68 wheel
 
 COPY pyproject.toml ./
 COPY . .
 
-RUN pip install --no-cache-dir -e .
+# 2) --no-build-isolation 复用上面已装的 setuptools，跳过隔离构建
+RUN pip install --no-cache-dir --no-build-isolation -e .
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
