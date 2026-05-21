@@ -6,11 +6,11 @@ WORKDIR /app
 # 国外服务器：--build-arg PIP_INDEX_URL=https://pypi.org/simple --build-arg PIP_TRUSTED_HOST=
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
-ENV PIP_INDEX_URL=$PIP_INDEX_URL \
-    PIP_TRUSTED_HOST=$PIP_TRUSTED_HOST \
-    PIP_DEFAULT_TIMEOUT=120 \
-    PIP_RETRIES=10 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_INDEX_URL=$PIP_INDEX_URL
+ENV PIP_TRUSTED_HOST=$PIP_TRUSTED_HOST
+ENV PIP_DEFAULT_TIMEOUT=120
+ENV PIP_RETRIES=10
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # 1) 预装 build 后端，避免 pip install -e . 触发 PEP 517 隔离环境
 #    （原本会另起一个隔离 pip 重新装 setuptools，慢且常超时）
