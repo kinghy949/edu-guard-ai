@@ -139,6 +139,7 @@ npm run dev
 - [数据模型](docs/data-model.md)
 - [操作手册](docs/operations.md) — 默认账号、AI 模型、通知渠道、运维命令
 - [部署指南](docs/deploy.md)
+- [CentOS 公网部署实战](docs/centos-deploy.md) — 2C2G 服务器从 zip 上传到上线全流程
 - [批量导入模板](docs/import-templates.md)
 - [预警规则](docs/warning-rules.md)
 - [AI 学业问答](docs/ai-chat.md)
