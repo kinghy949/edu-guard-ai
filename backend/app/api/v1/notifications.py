@@ -36,7 +36,7 @@ def list_notifications(
     return db.scalars(stmt.order_by(Notification.created_at.desc()).offset(skip).limit(limit)).all()
 
 
-@router.get("/{notification_id}", response_model=NotificationRead)
+@router.get("/{notification_id:int}", response_model=NotificationRead)
 def get_notification(notification_id: int, db: DbSession, current: CurrentUser):
     n = get_or_404(db, Notification, notification_id, "通知")
     if current.role == UserRole.STUDENT and n.user_id != current.id:

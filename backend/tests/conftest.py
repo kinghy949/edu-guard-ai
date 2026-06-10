@@ -8,16 +8,17 @@ from urllib.parse import urlparse
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import Base, get_db
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models import Course, CreditBucket, Grade, Program, ProgramCourse, Student, User
+from app.models import Course, CreditBucket, Grade, Program, ProgramCourse, Student, User, Warning
 from app.models.grade import GradeStatus
 from app.models.user import UserRole
+from app.models.warning import WarningLevel
 
 
 TEST_DATABASE_URL = os.getenv(
@@ -53,14 +54,14 @@ def engine() -> Generator[Engine, None, None]:
 def db(engine: Engine) -> Generator[Session, None, None]:
     connection = engine.connect()
     outer = connection.begin()
-    TestingSessionLocal = sessionmaker(bind=connection, autoflush=False, autocommit=False, future=True)
+    TestingSessionLocal = sessionmaker(
+        bind=connection,
+        autoflush=False,
+        autocommit=False,
+        future=True,
+        join_transaction_mode="create_savepoint",
+    )
     session = TestingSessionLocal()
-    session.begin_nested()
-
-    @event.listens_for(session, "after_transaction_end")
-    def restart_savepoint(sess: Session, transaction) -> None:
-        if transaction.nested and transaction.parent and not transaction.parent.nested:
-            sess.begin_nested()
 
     try:
         yield session
@@ -216,6 +217,27 @@ def make_grade(
     db.add(grade)
     db.flush()
     return grade
+
+
+def make_warning(
+    db: Session,
+    *,
+    student: Student,
+    level: str = WarningLevel.WARN,
+    semester: str = "2024-2",
+    summary: str = "测试预警",
+    detail: dict | None = None,
+) -> Warning:
+    warning = Warning(
+        student_id=student.id,
+        level=level,
+        semester=semester,
+        summary=summary,
+        detail=detail or {"total_required": "10", "total_gap": "4", "buckets": [], "failed_count": 0},
+    )
+    db.add(warning)
+    db.flush()
+    return warning
 
 
 def auth_header(user: User) -> dict[str, str]:
