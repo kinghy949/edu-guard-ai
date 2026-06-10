@@ -52,7 +52,7 @@ def estimated_stage(enroll_year: int, now: datetime | None = None) -> int:
     now = now or datetime.now()
     term = 1 if now.month <= 6 else 2
     years = max(now.year - enroll_year, 0)
-    return max(years * 2 + (1 if term == 1 else 2), 1)
+    return min(max(years * 2 + (1 if term == 1 else 2), 1), DEFAULT_RULE.stage_total_semesters)
 
 
 def _evaluate(report: ProgressReport, stage: int, rule: WarningRule) -> tuple[str, str, dict] | None:
