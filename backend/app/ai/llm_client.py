@@ -70,8 +70,12 @@ def chat(
         data = r.json()
         return data["choices"][0]["message"]["content"]
     except httpx.HTTPError as e:
+        from app.core.logging import get_logger
+        get_logger("llm").warning("llm_call_failed", model=rt.model, error=str(e))
         raise LLMError(f"LLM 调用失败: {e}") from e
     except (KeyError, IndexError) as e:
+        from app.core.logging import get_logger
+        get_logger("llm").warning("llm_response_parse_error", model=rt.model, error=str(e))
         raise LLMError(f"LLM 响应解析失败: {e}") from e
 
 

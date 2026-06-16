@@ -3,13 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import router as api_v1_router
 from app.core.config import ensure_production_safe, settings
+from app.core.logging import setup_logging
 from app.core.rate_limit import LoginRateLimitMiddleware
+from app.core.request_logging import RequestLoggingMiddleware
 
 # 生产环境启动前先校验关键安全配置（弱密钥/默认值直接拒绝启动）
 ensure_production_safe()
+# 配置结构化日志（dev 控制台 / prod JSON）
+setup_logging()
 
 app = FastAPI(title="EduGuard-AI", version="0.1.0")
 
+# 中间件按"先注册后执行"顺序应用，CORS 应在最外层
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -19,6 +24,8 @@ app.add_middleware(
 )
 # 登录接口 IP 级限流，防止暴力破解扫密
 app.add_middleware(LoginRateLimitMiddleware)
+# 请求日志 + request_id；放最内层以便贴近真实业务
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(api_v1_router, prefix="/api/v1")
 

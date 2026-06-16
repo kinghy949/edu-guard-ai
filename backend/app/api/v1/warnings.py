@@ -6,12 +6,15 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession, require_staff
 from app.api.v1._helpers import get_or_404
+from app.core.logging import get_logger
 from app.models.student import Student
 from app.models.user import UserRole
 from app.models.warning import Warning
 from app.schemas.warning import WarningRead
 from app.services.notify_dispatcher import dispatch_warning
 from app.services.warning_engine import generate_batch, generate_for_student
+
+log = get_logger("warnings")
 
 router = APIRouter()
 
@@ -85,6 +88,12 @@ def generate(payload: GenerateRequest, db: DbSession):
     if not students:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "未匹配到学生")
     result = generate_batch(db, students, semester=payload.semester)
+    log.info(
+        "warnings_generated",
+        semester=result.get("semester"), student_count=len(students),
+        created=result.get("created", 0), updated=result.get("updated", 0),
+        auto_dispatch=bool(payload.auto_dispatch),
+    )
     if payload.auto_dispatch:
         dispatched = sent = failed = 0
         for w in db.scalars(select(Warning).where(

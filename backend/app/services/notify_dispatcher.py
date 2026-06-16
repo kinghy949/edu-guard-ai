@@ -16,11 +16,14 @@ from jinja2 import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.models.notification import Notification, NotificationConfig, NotificationStatus
 from app.models.student import Student
 from app.models.user import User
 from app.models.warning import Warning
 from app.notifiers import REGISTRY
+
+log = get_logger("notify")
 
 
 WARNING_SUBJECT_TPL = Template("【学业预警-{{ level_cn }}】{{ student_name }}（{{ student_no }}）")
@@ -135,6 +138,11 @@ def dispatch(
             ok += 1
         else:
             err += 1
+            log.warning(
+                "notify_failed",
+                channel=ch, target=target, warning_id=warning_id,
+                user_id=user.id if user else None, detail=outcome.detail,
+            )
 
     db.commit()
     return DispatchSummary(notification_ids=ids, succeeded=ok, failed=err)
