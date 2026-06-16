@@ -14,7 +14,9 @@ docker compose up -d
 ```bash
 cp backend/.env.example backend/.env
 # 编辑 backend/.env：
-#  - SECRET_KEY 改为长随机串
+#  - APP_ENV=prod            # 启动前会校验 SECRET_KEY 强度，弱密钥直接拒绝启动
+#  - SECRET_KEY=$(openssl rand -hex 32)  # 必须 ≥ 32 字符
+#  - CORS_ORIGINS=https://eduguard.example.edu.cn   # 列出真实前端域名，禁止使用 *
 #  - DATABASE_URL=postgresql+psycopg://eduguard:<强密码>@db:5432/eduguard
 #  - LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
 

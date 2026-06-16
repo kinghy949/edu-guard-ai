@@ -7,7 +7,6 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 天
 
 _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -33,7 +32,7 @@ def create_access_token(subject: str | int, extra: dict[str, Any] | None = None)
     payload: dict[str, Any] = {
         "sub": str(subject),
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)).timestamp()),
+        "exp": int((now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)).timestamp()),
     }
     if extra:
         payload.update(extra)
