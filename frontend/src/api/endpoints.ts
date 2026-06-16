@@ -185,6 +185,10 @@ export const importsApi = {
     http.get<{ items: ImportBatchSummary[]; total: number }>('/imports/batches', { params }).then((r) => r.data),
   batchDetail: (id: number) => http.get<ImportBatchDetail>(`/imports/batches/${id}`).then((r) => r.data),
   errorReportUrl: (batchId: number) => `/api/v1/imports/batches/${batchId}/errors.xlsx`,
+  rollback: (batchId: number) =>
+    http.post<{ restored: number; deleted: number; skipped: number; skipped_details: { row: number; reason: string }[] }>(
+      `/imports/batches/${batchId}/rollback`,
+    ).then((r) => r.data),
 }
 
 export interface ImportMapping {

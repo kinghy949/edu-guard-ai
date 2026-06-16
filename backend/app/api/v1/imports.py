@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from sqlalchemy import func, select
 
-from app.api.deps import CurrentUser, DbSession, require_staff
+from app.api.deps import CurrentUser, DbSession, require_admin, require_staff
 from app.core.logging import get_logger
 from app.models.import_batch import ImportBatch
 from app.models.import_mapping import ImportMapping
@@ -14,6 +14,7 @@ from app.schemas.import_batch import ImportBatchDetail, ImportBatchPage, ImportB
 from app.schemas.import_mapping import ImportMappingCreate, ImportMappingRead, ImportMappingUpdate
 from app.services import importer
 from app.services.audit import record_audit
+from app.services.import_rollback import rollback_batch
 
 router = APIRouter(dependencies=[Depends(require_staff)])
 log = get_logger("imports")
@@ -234,6 +235,22 @@ def delete_mapping(mapping_id: int, db: DbSession):
     db.delete(m)
     db.commit()
     return {"ok": True}
+
+
+@router.post(
+    "/batches/{batch_id}/rollback",
+    dependencies=[Depends(require_admin)],
+    summary="回滚指定批次（仅管理员）",
+)
+def rollback(batch_id: int, db: DbSession, current: CurrentUser, request: Request):
+    result = rollback_batch(db, batch_id, operator_id=current.id)
+    record_audit(
+        db, user=current, action="imports.rollback",
+        resource_type="import_batch", resource_id=batch_id,
+        detail=result, request=request,
+    )
+    db.commit()
+    return result
 
 
 @router.get("/batches/{batch_id}/errors.xlsx", summary="下载导入错误清单 Excel")

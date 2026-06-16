@@ -52,9 +52,18 @@
           <el-table-column label="新建/更新/错误" width="160">
             <template #default="{ row }">{{ row.created_count }} / {{ row.updated_count }} / {{ row.error_count }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="100">
+          <el-table-column label="操作" width="180">
             <template #default="{ row }">
               <el-button link size="small" @click="showBatch(row.id)">详情</el-button>
+              <el-popconfirm
+                v-if="user.isAdmin && row.status === 'completed'"
+                :title="`确认回滚批次 #${row.id}？该操作会删除本次新建的记录、还原本次更新的字段。`"
+                @confirm="rollbackBatch(row.id)"
+              >
+                <template #reference>
+                  <el-button link size="small" type="danger">回滚</el-button>
+                </template>
+              </el-popconfirm>
             </template>
           </el-table-column>
         </el-table>
@@ -424,6 +433,12 @@ async function loadBatches() {
 async function showBatch(id: number) {
   batchDetail.value = await importsApi.batchDetail(id)
   batchDetailVisible.value = true
+}
+
+async function rollbackBatch(id: number) {
+  const res = await importsApi.rollback(id)
+  ElMessage.success(`回滚完成：还原 ${res.restored} / 删除 ${res.deleted} / 跳过 ${res.skipped}`)
+  loadBatches()
 }
 
 const gen = reactive({
