@@ -22,7 +22,7 @@ export const useUserStore = defineStore('user', {
       else localStorage.removeItem(TOKEN_KEY)
     },
     async login(username: string, password: string) {
-      const token = await authApi.login(username, password)
+      const { token } = await authApi.login(username, password)
       this.setToken(token)
       await this.fetchMe()
     },

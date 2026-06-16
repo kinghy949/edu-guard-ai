@@ -101,6 +101,8 @@ def import_students(db: Session, df: pd.DataFrame, default_role: str = UserRole.
             email=row.get("email") or None,
             phone=row.get("phone") or None,
             display_name=row["name"],
+            # 学生初始密码=学号，必须首次登录后立即改密
+            must_change_password=True,
         )
         db.add(user)
         db.flush()

@@ -38,6 +38,11 @@ async function submit() {
   loading.value = true
   try {
     await user.login(form.username, form.password)
+    if (user.profile?.must_change_password) {
+      ElMessage.warning('为保障账号安全，请先修改初始密码')
+      router.push('/change-password')
+      return
+    }
     const redirect = (route.query.redirect as string) || '/dashboard'
     router.push(redirect)
   } finally {

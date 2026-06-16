@@ -42,6 +42,8 @@ def ensure_admin() -> None:
             role=UserRole.ADMIN,
             display_name="管理员",
             email=email,
+            # bootstrap 默认密码若被沿用极不安全，强制首次登录改密
+            must_change_password=True,
         ))
         db.commit()
         print(f"[bootstrap] 创建默认管理员: {username}")

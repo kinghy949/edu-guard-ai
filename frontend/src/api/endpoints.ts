@@ -8,6 +8,7 @@ export interface User {
   phone: string | null
   display_name: string | null
   is_active: boolean
+  must_change_password?: boolean
 }
 
 export interface BucketProgress {
@@ -73,16 +74,31 @@ export interface ChatMessage {
 }
 
 export const authApi = {
-  async login(username: string, password: string): Promise<string> {
+  async login(
+    username: string,
+    password: string,
+  ): Promise<{ token: string; mustChangePassword: boolean }> {
     const form = new URLSearchParams()
     form.append('username', username)
     form.append('password', password)
-    const r = await http.post<{ access_token: string }>('/auth/login', form, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    })
-    return r.data.access_token
+    const r = await http.post<{ access_token: string; must_change_password?: boolean }>(
+      '/auth/login',
+      form,
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+    )
+    return {
+      token: r.data.access_token,
+      mustChangePassword: !!r.data.must_change_password,
+    }
   },
   me: () => http.get<User>('/auth/me').then((r) => r.data),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    http
+      .post<User>('/auth/change-password', {
+        old_password: oldPassword,
+        new_password: newPassword,
+      })
+      .then((r) => r.data),
 }
 
 export const progressApi = {

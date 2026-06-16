@@ -92,6 +92,7 @@ def make_user(
     email: str | None = None,
     phone: str | None = None,
     display_name: str | None = None,
+    must_change_password: bool = False,
 ) -> User:
     username = username or f"{role}_{uuid.uuid4().hex[:12]}"
     user = User(
@@ -101,6 +102,7 @@ def make_user(
         email=email,
         phone=phone,
         display_name=display_name or username,
+        must_change_password=must_change_password,
     )
     db.add(user)
     db.flush()

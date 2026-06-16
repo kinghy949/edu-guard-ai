@@ -16,6 +16,11 @@ dist/
 *.log
 .npm
 .yarn-cache/
+# vue-tsc 偶发产物
+frontend/src/**/*.vue.js
+frontend/src/**/*.vue.d.ts
+frontend/tsconfig.tsbuildinfo
+frontend/package-lock.json
 
 # IDE
 .idea/
