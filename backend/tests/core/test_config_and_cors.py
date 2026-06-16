@@ -38,8 +38,19 @@ def test_ensure_production_safe_prod_rejects_short_key():
 
 
 def test_ensure_production_safe_prod_accepts_strong_key():
-    s = Settings(APP_ENV="prod", SECRET_KEY="a" * 32)
+    s = Settings(
+        APP_ENV="prod",
+        SECRET_KEY="a" * 32,
+        ENCRYPTION_KEY="x" * 32,  # T1.6 起，prod 还需显式 ENCRYPTION_KEY
+    )
     ensure_production_safe(s)
+
+
+def test_ensure_production_safe_prod_requires_encryption_key():
+    import pytest as _pytest
+    s = Settings(APP_ENV="prod", SECRET_KEY="a" * 32, ENCRYPTION_KEY="")
+    with _pytest.raises(RuntimeError):
+        ensure_production_safe(s)
 
 
 def test_cors_headers_not_wildcard(client):

@@ -11,9 +11,10 @@ def load_runtime(db: Session) -> LLMRuntime:
         select(LLMConfig).where(LLMConfig.enabled.is_(True)).order_by(LLMConfig.id.desc())
     )
     if cfg:
+        from app.core.crypto import decrypt_str
         return resolve_runtime(
             base_url=cfg.base_url,
-            api_key=cfg.api_key,
+            api_key=decrypt_str(cfg.api_key),
             model=cfg.model,
             temperature=cfg.temperature,
         )

@@ -10,6 +10,7 @@ from app.models.warning import Warning
 from app.schemas.notification import (
     NotificationConfigRead, NotificationConfigUpdate, NotificationRead,
 )
+from app.services.notification_secrets import encrypt_config_for_write, mask_config_for_read
 from app.services.notify_dispatcher import dispatch, dispatch_warning
 
 router = APIRouter()
@@ -46,23 +47,43 @@ def get_notification(notification_id: int, db: DbSession, current: CurrentUser):
 
 # ----- 渠道配置（管理员） -----
 
+def _mask_for_read(cfg: NotificationConfig) -> dict:
+    return {
+        "id": cfg.id,
+        "created_at": cfg.created_at,
+        "updated_at": cfg.updated_at,
+        "channel": cfg.channel,
+        "enabled": cfg.enabled,
+        "config": mask_config_for_read(cfg.channel, cfg.config or {}),
+        "updated_by": cfg.updated_by,
+    }
+
+
 @router.get("/configs/all", response_model=list[NotificationConfigRead], dependencies=[Depends(require_admin)])
 def list_configs(db: DbSession):
-    return db.scalars(select(NotificationConfig)).all()
+    return [_mask_for_read(c) for c in db.scalars(select(NotificationConfig)).all()]
 
 
 @router.put("/configs/{channel}", response_model=NotificationConfigRead, dependencies=[Depends(require_admin)])
 def upsert_config(channel: str, payload: NotificationConfigUpdate, db: DbSession, current: CurrentUser):
     cfg = db.scalar(select(NotificationConfig).where(NotificationConfig.channel == channel))
     if not cfg:
-        cfg = NotificationConfig(channel=channel, enabled=bool(payload.enabled), config=payload.config, updated_by=current.id)
+        cfg = NotificationConfig(
+            channel=channel,
+            enabled=bool(payload.enabled),
+            config=encrypt_config_for_write(channel, payload.config),
+            updated_by=current.id,
+        )
         db.add(cfg)
     else:
-        apply_updates(cfg, payload.model_dump(exclude_unset=True))
+        data = payload.model_dump(exclude_unset=True)
+        if "config" in data:
+            data["config"] = encrypt_config_for_write(channel, data["config"], existing=cfg.config or {})
+        apply_updates(cfg, data)
         cfg.updated_by = current.id
     db.commit()
     db.refresh(cfg)
-    return cfg
+    return _mask_for_read(cfg)
 
 
 # ----- 测试 / 触发 -----

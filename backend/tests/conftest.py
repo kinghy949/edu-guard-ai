@@ -71,6 +71,16 @@ def db(engine: Engine) -> Generator[Session, None, None]:
         connection.close()
 
 
+@pytest.fixture(autouse=True)
+def _reset_login_rate_limit():
+    # 进程级登录限流计数器在测试间会累加，每个用例前自动清零
+    from app.core.rate_limit import reset_login_rate_limit
+
+    reset_login_rate_limit()
+    yield
+    reset_login_rate_limit()
+
+
 @pytest.fixture
 def client(db: Session) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:

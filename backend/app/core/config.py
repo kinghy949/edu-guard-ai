@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     APP_NAME: str = "EduGuard-AI"
     APP_ENV: str = "dev"
     SECRET_KEY: str = "change-me"
+    # 敏感字段对称加密密钥（Fernet 44 字节 base64 urlsafe）；
+    # 留空时由 SECRET_KEY 派生（仅供 dev 使用），prod 必须显式设置
+    ENCRYPTION_KEY: str = ""
     # 允许的前端来源，逗号或 JSON 数组形式；默认仅放行本地开发地址
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
     # JWT 过期时间（分钟），默认 24 小时
@@ -59,4 +62,9 @@ def ensure_production_safe(s: Settings | None = None) -> None:
         raise RuntimeError(
             "生产环境必须设置强 SECRET_KEY（长度≥32，且不能使用默认值）。"
             "可用 `openssl rand -hex 32` 生成。"
+        )
+    if not s.ENCRYPTION_KEY:
+        raise RuntimeError(
+            "生产环境必须显式设置 ENCRYPTION_KEY（Fernet 44 字节 base64 urlsafe）。"
+            "可用 `python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"` 生成。"
         )

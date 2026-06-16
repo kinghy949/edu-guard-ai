@@ -57,8 +57,10 @@ class DispatchSummary:
 
 
 def _enabled_configs(db: Session) -> dict[str, dict[str, Any]]:
+    from app.services.notification_secrets import decrypt_config_for_send
+
     rows = db.scalars(select(NotificationConfig).where(NotificationConfig.enabled.is_(True))).all()
-    return {row.channel: (row.config or {}) for row in rows}
+    return {row.channel: decrypt_config_for_send(row.channel, row.config or {}) for row in rows}
 
 
 def render_warning(warning: Warning, student: Student) -> tuple[str, str]:
