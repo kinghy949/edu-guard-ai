@@ -41,3 +41,5 @@ coverage/
 # 部署用离线镜像包
 *.tgz
 *.tgz.zip
+.coverage
+backend/.coverage
