@@ -16,9 +16,10 @@ dist/
 *.log
 .npm
 .yarn-cache/
-# vue-tsc 偶发产物
-frontend/src/**/*.vue.js
-frontend/src/**/*.vue.d.ts
+# vue-tsc 偶发产物（noEmit 行为不可靠时仍会产出 .js / .d.ts）
+*.vue.js
+*.vue.d.ts
+frontend/src/**/*.js
 frontend/tsconfig.tsbuildinfo
 frontend/package-lock.json
 
