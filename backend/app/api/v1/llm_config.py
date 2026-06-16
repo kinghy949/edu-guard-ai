@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 
 from app.ai import LLMError, chat, resolve_runtime
@@ -8,6 +8,7 @@ from app.models.llm_config import LLMConfig
 from app.schemas.llm_config import (
     LLMConfigRead, LLMConfigTestRequest, LLMConfigUpdate,
 )
+from app.services.audit import record_audit
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -39,7 +40,7 @@ def get_config(db: DbSession):
 
 
 @router.put("", response_model=LLMConfigRead, summary="更新 LLM 配置")
-def update_config(payload: LLMConfigUpdate, db: DbSession, current: CurrentUser):
+def update_config(payload: LLMConfigUpdate, db: DbSession, current: CurrentUser, request: Request):
     cfg = _active(db)
     if not cfg:
         if not (payload.base_url and payload.api_key and payload.model):
@@ -66,6 +67,15 @@ def update_config(payload: LLMConfigUpdate, db: DbSession, current: CurrentUser)
         for k, v in data.items():
             setattr(cfg, k, v)
         cfg.updated_by = current.id
+    # 审计明文不可写入 api_key
+    detail = payload.model_dump(exclude_unset=True)
+    if "api_key" in detail:
+        detail["api_key"] = "***"
+    record_audit(
+        db, user=current, action="llm_config.update",
+        resource_type="llm_config", resource_id=cfg.id if cfg.id else None,
+        detail=detail, request=request,
+    )
     db.commit()
     db.refresh(cfg)
     return _to_read(cfg)

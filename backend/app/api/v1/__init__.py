@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    auth, chat, courses, grades, imports, llm_config, notifications, progress,
+    audit, auth, chat, courses, grades, imports, llm_config, notifications, progress,
     programs, students, users, warnings,
 )
 
@@ -25,3 +25,4 @@ router.include_router(warnings.router, prefix="/warnings", tags=["warnings"])
 router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 router.include_router(chat.router, prefix="/chat", tags=["chat"])
 router.include_router(llm_config.router, prefix="/admin/llm-config", tags=["llm-config"])
+router.include_router(audit.router, prefix="/admin", tags=["audit"])

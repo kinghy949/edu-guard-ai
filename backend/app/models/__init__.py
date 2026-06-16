@@ -7,8 +7,10 @@ from app.models.warning import Warning
 from app.models.notification import Notification, NotificationConfig
 from app.models.chat import ChatSession, ChatMessage
 from app.models.llm_config import LLMConfig
+from app.models.audit import AuditLog
 
 __all__ = [
+    "AuditLog",
     "User",
     "Student",
     "Program",

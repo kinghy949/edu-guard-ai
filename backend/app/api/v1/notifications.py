@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -10,6 +10,7 @@ from app.models.warning import Warning
 from app.schemas.notification import (
     NotificationConfigRead, NotificationConfigUpdate, NotificationRead,
 )
+from app.services.audit import record_audit
 from app.services.notification_secrets import encrypt_config_for_write, mask_config_for_read
 from app.services.notify_dispatcher import dispatch, dispatch_warning
 
@@ -65,7 +66,7 @@ def list_configs(db: DbSession):
 
 
 @router.put("/configs/{channel}", response_model=NotificationConfigRead, dependencies=[Depends(require_admin)])
-def upsert_config(channel: str, payload: NotificationConfigUpdate, db: DbSession, current: CurrentUser):
+def upsert_config(channel: str, payload: NotificationConfigUpdate, db: DbSession, current: CurrentUser, request: Request):
     cfg = db.scalar(select(NotificationConfig).where(NotificationConfig.channel == channel))
     if not cfg:
         cfg = NotificationConfig(
@@ -81,6 +82,15 @@ def upsert_config(channel: str, payload: NotificationConfigUpdate, db: DbSession
             data["config"] = encrypt_config_for_write(channel, data["config"], existing=cfg.config or {})
         apply_updates(cfg, data)
         cfg.updated_by = current.id
+    # detail 中 config 仅记录键集合，避免泄露密文/明文
+    detail_data = payload.model_dump(exclude_unset=True)
+    if "config" in detail_data and isinstance(detail_data["config"], dict):
+        detail_data["config"] = {"keys": sorted(detail_data["config"].keys())}
+    record_audit(
+        db, user=current, action="notifications.upsert_config",
+        resource_type="notification_config", resource_id=channel,
+        detail=detail_data, request=request,
+    )
     db.commit()
     db.refresh(cfg)
     return _mask_for_read(cfg)

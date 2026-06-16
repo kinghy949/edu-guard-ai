@@ -173,6 +173,23 @@ export const llmConfigApi = {
     http.post<{ ok: boolean; reply: string }>('/admin/llm-config/test', { prompt }).then((r) => r.data),
 }
 
+export interface AuditLog {
+  id: number
+  user_id: number | null
+  username: string | null
+  action: string
+  resource_type: string | null
+  resource_id: string | null
+  detail: Record<string, unknown> | null
+  ip: string | null
+  created_at: string
+}
+
+export const auditApi = {
+  list: (params?: { action?: string; user_id?: number; page?: number; size?: number }) =>
+    http.get<{ items: AuditLog[]; total: number }>('/admin/audit-logs', { params }).then((r) => r.data),
+}
+
 export const notificationsApi = {
   listConfigs: () =>
     http.get('/notifications/configs/all').then((r) => r.data),

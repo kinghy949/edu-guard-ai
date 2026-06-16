@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 
@@ -10,6 +10,7 @@ from app.core.password_policy import validate_password
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User, UserRole
 from app.schemas.user import PasswordChange, TokenRead, UserCreate, UserRead
+from app.services.audit import record_audit
 
 router = APIRouter()
 
@@ -39,6 +40,12 @@ def register(payload: UserCreate, db: DbSession):
         password_updated_at=datetime.now(timezone.utc),
     )
     db.add(user)
+    db.flush()
+    record_audit(
+        db, user=None, action="users.register",
+        resource_type="user", resource_id=user.id,
+        detail={"username": user.username, "role": user.role},
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -48,12 +55,17 @@ _INVALID_CREDENTIAL = "用户名或密码错误"
 
 
 @router.post("/login", response_model=TokenRead)
-def login(db: DbSession, form: OAuth2PasswordRequestForm = Depends()):
+def login(request: Request, db: DbSession, form: OAuth2PasswordRequestForm = Depends()):
     """登录：账户锁定优先返回 423，凭据错统一返回 401（不泄露账户存在性）。"""
     now = datetime.now(timezone.utc)
     user = db.scalar(select(User).where(User.username == form.username))
 
     if user and user.locked_until and user.locked_until > now:
+        record_audit(
+            db, user=user, action="auth.login.locked",
+            detail={"username": form.username}, request=request,
+        )
+        db.commit()
         remaining = max(int((user.locked_until - now).total_seconds() // 60) + 1, 1)
         raise HTTPException(
             status.HTTP_423_LOCKED,
@@ -66,7 +78,12 @@ def login(db: DbSession, form: OAuth2PasswordRequestForm = Depends()):
             if user.failed_login_count >= settings.LOGIN_MAX_FAILED:
                 user.locked_until = now + timedelta(minutes=settings.LOGIN_LOCK_MINUTES)
                 user.failed_login_count = 0
-            db.commit()
+        record_audit(
+            db, user=user, action="auth.login.failed",
+            detail={"username": form.username, "user_exists": user is not None},
+            request=request,
+        )
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, _INVALID_CREDENTIAL)
 
     if not user.is_active:
@@ -75,13 +92,14 @@ def login(db: DbSession, form: OAuth2PasswordRequestForm = Depends()):
     # 成功登录：清零失败计数与锁定
     user.failed_login_count = 0
     user.locked_until = None
+    record_audit(db, user=user, action="auth.login.success", request=request)
     db.commit()
     token = create_access_token(user.id, extra={"role": user.role})
     return TokenRead(access_token=token, must_change_password=user.must_change_password)
 
 
 @router.post("/change-password", response_model=UserRead)
-def change_password(payload: PasswordChange, db: DbSession, user: CurrentUser):
+def change_password(payload: PasswordChange, request: Request, db: DbSession, user: CurrentUser):
     if not verify_password(payload.old_password, user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "原密码错误")
     if payload.old_password == payload.new_password:
@@ -90,6 +108,7 @@ def change_password(payload: PasswordChange, db: DbSession, user: CurrentUser):
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
     user.password_updated_at = datetime.now(timezone.utc)
+    record_audit(db, user=user, action="auth.change_password", request=request)
     db.commit()
     db.refresh(user)
     return user

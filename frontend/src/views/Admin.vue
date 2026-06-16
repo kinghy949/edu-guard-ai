@@ -108,6 +108,38 @@
         </el-form>
       </el-card>
     </el-tab-pane>
+
+    <!-- ===== 审计日志（管理员） ===== -->
+    <el-tab-pane label="审计日志" name="audit" v-if="user.isAdmin">
+      <el-card>
+        <el-form :model="auditFilter" inline>
+          <el-form-item label="动作">
+            <el-input v-model="auditFilter.action" placeholder="如 auth.login.success" clearable style="width: 220px" />
+          </el-form-item>
+          <el-form-item label="用户ID">
+            <el-input-number v-model="auditFilter.user_id" :min="0" />
+          </el-form-item>
+          <el-button @click="loadAudit">查询</el-button>
+        </el-form>
+        <el-table :data="auditRows" border style="margin-top: 12px">
+          <el-table-column prop="created_at" label="时间" width="200" />
+          <el-table-column prop="action" label="动作" width="220" />
+          <el-table-column prop="username" label="操作人" width="120" />
+          <el-table-column prop="ip" label="IP" width="140" />
+          <el-table-column prop="resource_type" label="资源类型" width="120" />
+          <el-table-column prop="resource_id" label="资源ID" width="120" />
+          <el-table-column label="详情">
+            <template #default="{ row }"><pre style="margin:0;font-size:12px">{{ JSON.stringify(row.detail, null, 2) }}</pre></template>
+          </el-table-column>
+        </el-table>
+        <el-pagination
+          background layout="prev, pager, next, total"
+          :current-page="auditPage" :page-size="auditSize" :total="auditTotal"
+          @current-change="(p: number) => { auditPage = p; loadAudit() }"
+          style="margin-top: 12px"
+        />
+      </el-card>
+    </el-tab-pane>
   </el-tabs>
 </template>
 
@@ -115,7 +147,7 @@
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 
-import { importsApi, llmConfigApi, notificationsApi, warningsApi } from '../api/endpoints'
+import { type AuditLog, auditApi, importsApi, llmConfigApi, notificationsApi, warningsApi } from '../api/endpoints'
 import { useUserStore } from '../stores/user'
 
 const user = useUserStore()
@@ -239,9 +271,30 @@ async function testLLM() {
   }
 }
 
+// 审计日志
+const auditFilter = reactive<{ action: string; user_id: number | undefined }>({ action: '', user_id: undefined })
+const auditRows = ref<AuditLog[]>([])
+const auditPage = ref(1)
+const auditSize = ref(20)
+const auditTotal = ref(0)
+
+async function loadAudit() {
+  if (!user.isAdmin) return
+  const params: { action?: string; user_id?: number; page: number; size: number } = {
+    page: auditPage.value,
+    size: auditSize.value,
+  }
+  if (auditFilter.action) params.action = auditFilter.action
+  if (auditFilter.user_id) params.user_id = auditFilter.user_id
+  const data = await auditApi.list(params)
+  auditRows.value = data.items
+  auditTotal.value = data.total
+}
+
 onMounted(() => {
   loadConfigs()
   loadLLM()
+  loadAudit()
 })
 </script>
 

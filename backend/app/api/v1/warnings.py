@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -11,6 +11,7 @@ from app.models.student import Student
 from app.models.user import UserRole
 from app.models.warning import Warning
 from app.schemas.warning import WarningRead
+from app.services.audit import record_audit
 from app.services.notify_dispatcher import dispatch_warning
 from app.services.warning_engine import generate_batch, generate_for_student
 
@@ -74,7 +75,7 @@ def get_warning(warning_id: int, db: DbSession, current: CurrentUser):
 
 
 @router.post("/generate", dependencies=[Depends(require_staff)], summary="批量生成预警")
-def generate(payload: GenerateRequest, db: DbSession):
+def generate(payload: GenerateRequest, db: DbSession, current: CurrentUser, request: Request):
     stmt = select(Student)
     if payload.student_ids:
         stmt = stmt.where(Student.id.in_(payload.student_ids))
@@ -105,6 +106,18 @@ def generate(payload: GenerateRequest, db: DbSession):
             sent += s.succeeded
             failed += s.failed
         result["dispatched"] = {"warnings": dispatched, "succeeded": sent, "failed": failed}
+    record_audit(
+        db, user=current, action="warnings.generate",
+        detail={
+            "semester": result.get("semester"),
+            "student_count": len(students),
+            "created": result.get("created"),
+            "updated": result.get("updated"),
+            "auto_dispatch": bool(payload.auto_dispatch),
+        },
+        request=request,
+    )
+    db.commit()
     return result
 
 
@@ -121,11 +134,16 @@ def generate_one(student_id: int, db: DbSession, semester: str | None = None):
 
 
 @router.post("/{warning_id}/resolve", response_model=WarningRead, dependencies=[Depends(require_staff)])
-def resolve(warning_id: int, payload: ResolveRequest, db: DbSession):
+def resolve(warning_id: int, payload: ResolveRequest, db: DbSession, current: CurrentUser, request: Request):
     w = get_or_404(db, Warning, warning_id, "预警")
     w.resolved_at = datetime.now(timezone.utc)
     if payload.note:
         w.resolver_note = payload.note
+    record_audit(
+        db, user=current, action="warnings.resolve",
+        resource_type="warning", resource_id=warning_id,
+        detail={"note": payload.note}, request=request,
+    )
     db.commit()
     db.refresh(w)
     return w
