@@ -202,6 +202,33 @@ export interface ImportMapping {
   updated_at: string
 }
 
+export interface WarningRule {
+  id: number
+  name: string
+  scope_college: string | null
+  scope_major: string | null
+  severe_total_gap_ratio: number
+  warn_total_gap_ratio: number
+  severe_required_ratio: number
+  warn_category_ratio: number
+  required_category_keywords: string[]
+  stage_total_semesters: number
+  enabled: boolean
+  priority: number
+  updated_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export const warningRulesApi = {
+  list: () => http.get<WarningRule[]>('/admin/warning-rules').then((r) => r.data),
+  create: (payload: Partial<Omit<WarningRule, 'id' | 'updated_by' | 'created_at' | 'updated_at'>>) =>
+    http.post<WarningRule>('/admin/warning-rules', payload).then((r) => r.data),
+  update: (id: number, payload: Partial<Omit<WarningRule, 'id' | 'updated_by' | 'created_at' | 'updated_at'>>) =>
+    http.patch<WarningRule>(`/admin/warning-rules/${id}`, payload).then((r) => r.data),
+  delete: (id: number) => http.delete(`/admin/warning-rules/${id}`).then((r) => r.data),
+}
+
 export const importMappingsApi = {
   list: (kind?: string) =>
     http.get<ImportMapping[]>('/imports/mappings', { params: kind ? { kind } : undefined }).then((r) => r.data),

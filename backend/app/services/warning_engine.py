@@ -18,10 +18,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.student import Student
 from app.models.warning import Warning, WarningLevel
+from app.models.warning_rule import WarningRuleORM
 from app.services.credit_compare import ProgressReport, compute_student_progress
 
 
@@ -36,6 +38,47 @@ class WarningRule:
 
 
 DEFAULT_RULE = WarningRule()
+
+
+def _from_orm(orm: WarningRuleORM) -> WarningRule:
+    return WarningRule(
+        severe_total_gap_ratio=orm.severe_total_gap_ratio,
+        warn_total_gap_ratio=orm.warn_total_gap_ratio,
+        severe_required_ratio=orm.severe_required_ratio,
+        warn_category_ratio=orm.warn_category_ratio,
+        required_category_keywords=tuple(orm.required_category_keywords or ["必修"]),
+        stage_total_semesters=orm.stage_total_semesters,
+    )
+
+
+def load_rule_for_student(db: Session, student: Student) -> tuple[WarningRule, int | None]:
+    """按 scope 选择适用规则：major 精确 > college 精确 > 全局；priority 高者优先。
+    返回 (规则数据类, 命中规则 id)；DB 无任何规则则返回 (DEFAULT_RULE, None)。"""
+    candidates = list(db.scalars(
+        select(WarningRuleORM)
+        .where(WarningRuleORM.enabled.is_(True))
+        .order_by(WarningRuleORM.priority.desc(), WarningRuleORM.id.asc())
+    ))
+    if not candidates:
+        return DEFAULT_RULE, None
+
+    def score(r: WarningRuleORM) -> int:
+        # major 精确匹配 > college 精确匹配 > 全局
+        if r.scope_major and student.major and r.scope_major == student.major:
+            return 3
+        if r.scope_college and student.college and r.scope_college == student.college:
+            return 2
+        if not r.scope_major and not r.scope_college:
+            return 1
+        return 0  # 作用域不匹配，剔除
+
+    matched = [(score(r), r) for r in candidates if score(r) > 0]
+    if not matched:
+        return DEFAULT_RULE, None
+    # 先按匹配精度（major>college>global）降序，再保持 priority 顺序
+    matched.sort(key=lambda x: x[0], reverse=True)
+    best = matched[0][1]
+    return _from_orm(best), best.id
 
 
 def current_semester_label(now: datetime | None = None) -> str:
@@ -126,15 +169,20 @@ def generate_for_student(
     student: Student,
     *,
     semester: str | None = None,
-    rule: WarningRule = DEFAULT_RULE,
+    rule: WarningRule | None = None,
     persist: bool = True,
 ) -> Warning | None:
+    rule_id: int | None = None
+    if rule is None:
+        rule, rule_id = load_rule_for_student(db, student)
     report = compute_student_progress(db, student)
     stage = estimated_stage(student.enroll_year)
     outcome = _evaluate(report, stage, rule)
     if not outcome:
         return None
     level, summary, detail = outcome
+    if rule_id is not None:
+        detail["rule_id"] = rule_id
     semester = semester or current_semester_label()
 
     warning = Warning(
@@ -155,7 +203,7 @@ def generate_batch(
     students: Iterable[Student],
     *,
     semester: str | None = None,
-    rule: WarningRule = DEFAULT_RULE,
+    rule: WarningRule | None = None,
 ) -> dict:
     semester = semester or current_semester_label()
     created = 0

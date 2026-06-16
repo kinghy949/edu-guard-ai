@@ -10,6 +10,7 @@ from app.models.program import CreditBucket, Program, ProgramCourse
 from app.models.student import Student
 from app.models.user import User
 from app.models.warning import Warning
+from app.models.warning_rule import WarningRuleORM
 
 __all__ = [
     "AuditLog",
@@ -29,4 +30,5 @@ __all__ = [
     "ImportBatch",
     "ImportBatchRow",
     "ImportMapping",
+    "WarningRuleORM",
 ]

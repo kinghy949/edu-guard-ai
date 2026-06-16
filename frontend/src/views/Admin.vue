@@ -254,6 +254,87 @@
       </el-card>
     </el-tab-pane>
 
+    <!-- ===== 预警规则（管理员） ===== -->
+    <el-tab-pane label="预警规则" name="rules" v-if="user.isAdmin">
+      <el-card>
+        <template #header>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span>预警规则（按 priority 倒序 + 作用域精度排序生效）</span>
+            <el-button size="small" type="primary" @click="openRuleForm()">新增</el-button>
+          </div>
+        </template>
+        <el-table :data="rules" border>
+          <el-table-column prop="name" label="名称" width="160" />
+          <el-table-column prop="scope_college" label="学院" width="120" />
+          <el-table-column prop="scope_major" label="专业" width="120" />
+          <el-table-column label="severe(总缺口/必修)" width="180">
+            <template #default="{ row }">{{ row.severe_total_gap_ratio }} / {{ row.severe_required_ratio }}</template>
+          </el-table-column>
+          <el-table-column label="warn(总缺口/分类)" width="180">
+            <template #default="{ row }">{{ row.warn_total_gap_ratio }} / {{ row.warn_category_ratio }}</template>
+          </el-table-column>
+          <el-table-column prop="priority" label="优先级" width="90" />
+          <el-table-column label="启用" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '是' : '否' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <el-button link size="small" @click="openRuleForm(row)">编辑</el-button>
+              <el-popconfirm title="确定删除？" @confirm="removeRule(row.id)">
+                <template #reference>
+                  <el-button link size="small" type="danger">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <el-dialog v-model="ruleFormVisible" :title="ruleForm.id ? '编辑规则' : '新建规则'" width="640px">
+        <el-form :model="ruleForm" label-width="160px">
+          <el-form-item label="名称">
+            <el-input v-model="ruleForm.name" />
+          </el-form-item>
+          <el-form-item label="作用学院（留空=全局）">
+            <el-input v-model="ruleForm.scope_college" />
+          </el-form-item>
+          <el-form-item label="作用专业（留空=全局/学院）">
+            <el-input v-model="ruleForm.scope_major" />
+          </el-form-item>
+          <el-form-item label="severe 总缺口比">
+            <el-input-number v-model="ruleForm.severe_total_gap_ratio" :min="0" :max="1" :step="0.05" />
+          </el-form-item>
+          <el-form-item label="severe 必修完成率下限">
+            <el-input-number v-model="ruleForm.severe_required_ratio" :min="0" :max="1" :step="0.05" />
+          </el-form-item>
+          <el-form-item label="warn 总缺口比">
+            <el-input-number v-model="ruleForm.warn_total_gap_ratio" :min="0" :max="1" :step="0.05" />
+          </el-form-item>
+          <el-form-item label="warn 分类完成率下限">
+            <el-input-number v-model="ruleForm.warn_category_ratio" :min="0" :max="1" :step="0.05" />
+          </el-form-item>
+          <el-form-item label="必修关键字（逗号分隔）">
+            <el-input v-model="ruleForm.keywordsText" />
+          </el-form-item>
+          <el-form-item label="总学期数">
+            <el-input-number v-model="ruleForm.stage_total_semesters" :min="1" :max="16" />
+          </el-form-item>
+          <el-form-item label="优先级">
+            <el-input-number v-model="ruleForm.priority" :min="0" />
+          </el-form-item>
+          <el-form-item label="启用">
+            <el-switch v-model="ruleForm.enabled" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="ruleFormVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveRule">保存</el-button>
+        </template>
+      </el-dialog>
+    </el-tab-pane>
+
     <!-- ===== 审计日志（管理员） ===== -->
     <el-tab-pane label="审计日志" name="audit" v-if="user.isAdmin">
       <el-card>
@@ -297,6 +378,7 @@ import {
   type ImportBatchDetail, type ImportBatchSummary,
   type ImportMapping, importMappingsApi,
   importsApi, llmConfigApi, notificationsApi, warningsApi,
+  type WarningRule, warningRulesApi,
 } from '../api/endpoints'
 import { useUserStore } from '../stores/user'
 
@@ -542,6 +624,87 @@ async function testLLM() {
   }
 }
 
+// 预警规则
+const rules = ref<WarningRule[]>([])
+const ruleFormVisible = ref(false)
+const ruleForm = reactive<{
+  id?: number; name: string; scope_college: string; scope_major: string;
+  severe_total_gap_ratio: number; warn_total_gap_ratio: number;
+  severe_required_ratio: number; warn_category_ratio: number;
+  keywordsText: string; stage_total_semesters: number;
+  enabled: boolean; priority: number;
+}>({
+  name: '', scope_college: '', scope_major: '',
+  severe_total_gap_ratio: 0.5, warn_total_gap_ratio: 0.25,
+  severe_required_ratio: 0.5, warn_category_ratio: 0.7,
+  keywordsText: '必修', stage_total_semesters: 8,
+  enabled: true, priority: 0,
+})
+
+async function loadRules() {
+  if (!user.isAdmin) return
+  rules.value = await warningRulesApi.list()
+}
+
+function openRuleForm(r?: WarningRule) {
+  if (r) {
+    Object.assign(ruleForm, {
+      id: r.id, name: r.name,
+      scope_college: r.scope_college ?? '', scope_major: r.scope_major ?? '',
+      severe_total_gap_ratio: r.severe_total_gap_ratio,
+      warn_total_gap_ratio: r.warn_total_gap_ratio,
+      severe_required_ratio: r.severe_required_ratio,
+      warn_category_ratio: r.warn_category_ratio,
+      keywordsText: (r.required_category_keywords || []).join(','),
+      stage_total_semesters: r.stage_total_semesters,
+      enabled: r.enabled, priority: r.priority,
+    })
+  } else {
+    Object.assign(ruleForm, {
+      id: undefined, name: '', scope_college: '', scope_major: '',
+      severe_total_gap_ratio: 0.5, warn_total_gap_ratio: 0.25,
+      severe_required_ratio: 0.5, warn_category_ratio: 0.7,
+      keywordsText: '必修', stage_total_semesters: 8,
+      enabled: true, priority: 0,
+    })
+  }
+  ruleFormVisible.value = true
+}
+
+async function saveRule() {
+  const payload = {
+    name: ruleForm.name,
+    scope_college: ruleForm.scope_college || null,
+    scope_major: ruleForm.scope_major || null,
+    severe_total_gap_ratio: ruleForm.severe_total_gap_ratio,
+    warn_total_gap_ratio: ruleForm.warn_total_gap_ratio,
+    severe_required_ratio: ruleForm.severe_required_ratio,
+    warn_category_ratio: ruleForm.warn_category_ratio,
+    required_category_keywords: ruleForm.keywordsText.split(',').map((s) => s.trim()).filter(Boolean),
+    stage_total_semesters: ruleForm.stage_total_semesters,
+    enabled: ruleForm.enabled,
+    priority: ruleForm.priority,
+  }
+  if (ruleForm.id) {
+    await warningRulesApi.update(ruleForm.id, payload)
+  } else {
+    await warningRulesApi.create(payload)
+  }
+  ruleFormVisible.value = false
+  ElMessage.success('已保存')
+  loadRules()
+}
+
+async function removeRule(id: number) {
+  try {
+    await warningRulesApi.delete(id)
+    loadRules()
+  } catch (e: unknown) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    ElMessage.error(detail || '删除失败')
+  }
+}
+
 // 审计日志
 const auditFilter = reactive<{ action: string; user_id: number | undefined }>({ action: '', user_id: undefined })
 const auditRows = ref<AuditLog[]>([])
@@ -568,6 +731,7 @@ onMounted(() => {
   loadConfigs()
   loadLLM()
   loadAudit()
+  loadRules()
 })
 </script>
 
