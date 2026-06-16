@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
     # JWT 过期时间（分钟），默认 24 小时
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    # 登录失败 N 次后锁定账户 LOCK_MINUTES 分钟
+    LOGIN_MAX_FAILED: int = 5
+    LOGIN_LOCK_MINUTES: int = 15
+    # 单 IP 每分钟最多 LOGIN_IP_RATE_LIMIT 次登录请求；0 表示关闭
+    LOGIN_IP_RATE_LIMIT: int = 10
 
     DATABASE_URL: str = "postgresql+psycopg://eduguard:eduguard@localhost:5432/eduguard"
 

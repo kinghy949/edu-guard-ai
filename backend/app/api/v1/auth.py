@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession, require_admin
+from app.core.config import settings
 from app.core.password_policy import validate_password
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User, UserRole
@@ -43,13 +44,38 @@ def register(payload: UserCreate, db: DbSession):
     return user
 
 
+_INVALID_CREDENTIAL = "用户名或密码错误"
+
+
 @router.post("/login", response_model=TokenRead)
 def login(db: DbSession, form: OAuth2PasswordRequestForm = Depends()):
+    """登录：账户锁定优先返回 423，凭据错统一返回 401（不泄露账户存在性）。"""
+    now = datetime.now(timezone.utc)
     user = db.scalar(select(User).where(User.username == form.username))
+
+    if user and user.locked_until and user.locked_until > now:
+        remaining = max(int((user.locked_until - now).total_seconds() // 60) + 1, 1)
+        raise HTTPException(
+            status.HTTP_423_LOCKED,
+            f"账户已锁定，请 {remaining} 分钟后再试",
+        )
+
     if not user or not verify_password(form.password, user.password_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户名或密码错误")
+        if user is not None:
+            user.failed_login_count = (user.failed_login_count or 0) + 1
+            if user.failed_login_count >= settings.LOGIN_MAX_FAILED:
+                user.locked_until = now + timedelta(minutes=settings.LOGIN_LOCK_MINUTES)
+                user.failed_login_count = 0
+            db.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, _INVALID_CREDENTIAL)
+
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "账户已停用")
+
+    # 成功登录：清零失败计数与锁定
+    user.failed_login_count = 0
+    user.locked_until = None
+    db.commit()
     token = create_access_token(user.id, extra={"role": user.role})
     return TokenRead(access_token=token, must_change_password=user.must_change_password)
 
