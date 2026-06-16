@@ -7,6 +7,15 @@
           <el-card>
             <h3>{{ k.label }}</h3>
             <p class="hint">{{ k.hint }}</p>
+            <el-select
+              v-model="selectedMapping[k.kind]" placeholder="字段映射（可选）" clearable size="small"
+              style="width: 100%; margin-bottom: 8px"
+            >
+              <el-option
+                v-for="m in mappings.filter(x => x.kind === k.kind)" :key="m.id"
+                :label="m.name" :value="m.id"
+              />
+            </el-select>
             <el-upload :before-upload="(file: File) => onUpload(k.kind, file)" :show-file-list="false" accept=".csv,.xlsx,.xls">
               <el-button type="primary">选择文件</el-button>
             </el-upload>
@@ -70,6 +79,57 @@
           </el-table>
           <el-empty v-else description="本次导入无错误行" />
         </div>
+      </el-dialog>
+
+      <el-card style="margin-top: 16px">
+        <template #header>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span>字段映射模板</span>
+            <el-button size="small" type="primary" @click="openMappingForm()">新增</el-button>
+          </div>
+        </template>
+        <el-table :data="mappings" border>
+          <el-table-column prop="kind" label="类型" width="100" />
+          <el-table-column prop="name" label="名称" width="200" />
+          <el-table-column label="映射 (源 → 目标)">
+            <template #default="{ row }">
+              <pre style="margin:0;font-size:12px">{{ JSON.stringify(row.mapping, null, 2) }}</pre>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <el-button link size="small" @click="openMappingForm(row)">编辑</el-button>
+              <el-popconfirm title="确定删除？" @confirm="removeMapping(row.id)">
+                <template #reference>
+                  <el-button link size="small" type="danger">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <el-dialog v-model="mappingFormVisible" :title="mappingForm.id ? '编辑映射模板' : '新增映射模板'" width="560px">
+        <el-form :model="mappingForm" label-width="80px">
+          <el-form-item label="类型">
+            <el-select v-model="mappingForm.kind" :disabled="!!mappingForm.id">
+              <el-option label="students" value="students" />
+              <el-option label="courses" value="courses" />
+              <el-option label="programs" value="programs" />
+              <el-option label="grades" value="grades" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="名称">
+            <el-input v-model="mappingForm.name" />
+          </el-form-item>
+          <el-form-item label="映射 JSON">
+            <el-input v-model="mappingForm.mappingText" type="textarea" :rows="8" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="mappingFormVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveMapping">保存</el-button>
+        </template>
       </el-dialog>
 
       <el-dialog v-model="previewVisible" title="导入预检" width="640px">
@@ -226,6 +286,7 @@ import { onMounted, reactive, ref } from 'vue'
 import {
   type AuditLog, auditApi,
   type ImportBatchDetail, type ImportBatchSummary,
+  type ImportMapping, importMappingsApi,
   importsApi, llmConfigApi, notificationsApi, warningsApi,
 } from '../api/endpoints'
 import { useUserStore } from '../stores/user'
@@ -252,16 +313,26 @@ const preview = ref<{
   wouldCreate: number
   wouldUpdate: number
   errors: { row: number; message: string }[]
+  mappingId?: number
 } | null>(null)
 const previewVisible = ref(false)
 const submitting = ref(false)
 
+const mappings = ref<ImportMapping[]>([])
+const selectedMapping = reactive<Record<ImportKind, number | undefined>>({
+  students: undefined, courses: undefined, programs: undefined, grades: undefined,
+})
+
+async function loadMappings() {
+  mappings.value = await importMappingsApi.list()
+}
+
 async function onUpload(kind: ImportKind, file: File) {
+  const mappingId = selectedMapping[kind]
   // 默认先 dry-run 预检
-  const dry = await importsApi.upload(kind, file, { dryRun: true })
+  const dry = await importsApi.upload(kind, file, { dryRun: true, mappingId })
   preview.value = {
-    kind,
-    file,
+    kind, file, mappingId,
     batchId: dry.batch_id,
     wouldCreate: dry.would_create ?? dry.created,
     wouldUpdate: dry.would_update ?? dry.updated,
@@ -276,7 +347,9 @@ async function confirmImport() {
   if (!preview.value) return
   submitting.value = true
   try {
-    const r = await importsApi.upload(preview.value.kind, preview.value.file)
+    const r = await importsApi.upload(preview.value.kind, preview.value.file, {
+      mappingId: preview.value.mappingId,
+    })
     results[preview.value.kind] = r as ImportRes
     ElMessage.success(`新建 ${r.created} / 更新 ${r.updated} / 错误 ${r.errors?.length ?? 0}`)
     previewVisible.value = false
@@ -284,6 +357,47 @@ async function confirmImport() {
   } finally {
     submitting.value = false
   }
+}
+
+// 字段映射模板 CRUD
+const mappingForm = reactive<{ id?: number; kind: ImportKind; name: string; mappingText: string }>({
+  kind: 'students', name: '', mappingText: '{\n  "学号": "student_no",\n  "姓名": "name"\n}',
+})
+const mappingFormVisible = ref(false)
+function openMappingForm(m?: ImportMapping) {
+  if (m) {
+    mappingForm.id = m.id
+    mappingForm.kind = m.kind as ImportKind
+    mappingForm.name = m.name
+    mappingForm.mappingText = JSON.stringify(m.mapping, null, 2)
+  } else {
+    mappingForm.id = undefined
+    mappingForm.kind = 'students'
+    mappingForm.name = ''
+    mappingForm.mappingText = '{\n  "学号": "student_no",\n  "姓名": "name"\n}'
+  }
+  mappingFormVisible.value = true
+}
+async function saveMapping() {
+  let parsed: Record<string, string>
+  try {
+    parsed = JSON.parse(mappingForm.mappingText)
+  } catch {
+    ElMessage.error('mapping JSON 解析失败')
+    return
+  }
+  if (mappingForm.id) {
+    await importMappingsApi.update(mappingForm.id, { name: mappingForm.name, mapping: parsed })
+  } else {
+    await importMappingsApi.create({ kind: mappingForm.kind, name: mappingForm.name, mapping: parsed })
+  }
+  mappingFormVisible.value = false
+  ElMessage.success('已保存')
+  loadMappings()
+}
+async function removeMapping(id: number) {
+  await importMappingsApi.delete(id)
+  loadMappings()
 }
 
 function downloadErrorReport(batchId: number) {
@@ -435,6 +549,7 @@ async function loadAudit() {
 
 onMounted(() => {
   loadBatches()
+  loadMappings()
   loadConfigs()
   loadLLM()
   loadAudit()

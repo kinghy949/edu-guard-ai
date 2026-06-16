@@ -3,6 +3,7 @@ from app.models.chat import ChatMessage, ChatSession
 from app.models.course import Course
 from app.models.grade import Grade
 from app.models.import_batch import ImportBatch, ImportBatchRow
+from app.models.import_mapping import ImportMapping
 from app.models.llm_config import LLMConfig
 from app.models.notification import Notification, NotificationConfig
 from app.models.program import CreditBucket, Program, ProgramCourse
@@ -27,4 +28,5 @@ __all__ = [
     "LLMConfig",
     "ImportBatch",
     "ImportBatchRow",
+    "ImportMapping",
 ]

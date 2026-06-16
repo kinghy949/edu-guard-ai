@@ -76,6 +76,15 @@ def parse_table(content: bytes, filename: str) -> pd.DataFrame:
     raise ValueError("仅支持 .csv / .xlsx / .xls")
 
 
+def apply_mapping(df: pd.DataFrame, mapping: dict[str, str] | None) -> pd.DataFrame:
+    """按 {源列名: 目标字段} 重命名列；未映射且非目标列名的多余列保留原名（importer 自会忽略）。"""
+    if not mapping:
+        return df
+    # 仅对真正出现在 df 中的源列做 rename，避免 pandas 抛 KeyError
+    valid = {src: dst for src, dst in mapping.items() if src in df.columns}
+    return df.rename(columns=valid)
+
+
 def _row(df_row: pd.Series) -> dict[str, str]:
     return {k: (str(v).strip() if v is not None else "") for k, v in df_row.to_dict().items()}
 
@@ -397,10 +406,13 @@ def run_import(
     - dry_run=True：业务写入在 savepoint 内 rollback；批次记录在外层事务保留。
     - 非 dry_run：业务全部失败（且无成功）时整体 rollback，批次 status=rolled_back；
       其余情况 commit，status=completed。
+    - mapping：{源列名: 目标字段} 字典；按映射重命名 df 后再执行 importer。
     """
     if kind not in IMPORTERS:
         raise ValueError(f"不支持的导入类型: {kind}")
     importer_fn = IMPORTERS[kind]
+    if mapping:
+        df = apply_mapping(df, mapping)
     total_rows = int(len(df.index)) if df is not None else 0
     log.info("import_start", kind=kind, filename=filename, total_rows=total_rows, dry_run=dry_run)
 

@@ -164,10 +164,11 @@ export const importsApi = {
   upload: (
     kind: 'students' | 'courses' | 'programs' | 'grades',
     file: File,
-    opts: { dryRun?: boolean } = {},
+    opts: { dryRun?: boolean; mappingId?: number } = {},
   ) => {
     const fd = new FormData()
     fd.append('file', file)
+    if (opts.mappingId) fd.append('mapping_id', String(opts.mappingId))
     return http
       .post<{
         batch_id: number; status: string; dry_run: boolean;
@@ -184,6 +185,27 @@ export const importsApi = {
     http.get<{ items: ImportBatchSummary[]; total: number }>('/imports/batches', { params }).then((r) => r.data),
   batchDetail: (id: number) => http.get<ImportBatchDetail>(`/imports/batches/${id}`).then((r) => r.data),
   errorReportUrl: (batchId: number) => `/api/v1/imports/batches/${batchId}/errors.xlsx`,
+}
+
+export interface ImportMapping {
+  id: number
+  kind: string
+  name: string
+  mapping: Record<string, string>
+  is_default: boolean
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export const importMappingsApi = {
+  list: (kind?: string) =>
+    http.get<ImportMapping[]>('/imports/mappings', { params: kind ? { kind } : undefined }).then((r) => r.data),
+  create: (payload: { kind: string; name: string; mapping: Record<string, string>; is_default?: boolean }) =>
+    http.post<ImportMapping>('/imports/mappings', payload).then((r) => r.data),
+  update: (id: number, payload: { name?: string; mapping?: Record<string, string>; is_default?: boolean }) =>
+    http.put<ImportMapping>(`/imports/mappings/${id}`, payload).then((r) => r.data),
+  delete: (id: number) => http.delete(`/imports/mappings/${id}`).then((r) => r.data),
 }
 
 export interface LLMConfig {

@@ -1,6 +1,7 @@
 import io
+import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from sqlalchemy import func, select
@@ -8,7 +9,9 @@ from sqlalchemy import func, select
 from app.api.deps import CurrentUser, DbSession, require_staff
 from app.core.logging import get_logger
 from app.models.import_batch import ImportBatch
+from app.models.import_mapping import ImportMapping
 from app.schemas.import_batch import ImportBatchDetail, ImportBatchPage, ImportBatchSummary
+from app.schemas.import_mapping import ImportMappingCreate, ImportMappingRead, ImportMappingUpdate
 from app.services import importer
 from app.services.audit import record_audit
 
@@ -25,7 +28,25 @@ async def _read(file: UploadFile) -> bytes:
     return data
 
 
-def _run(*, db, data: bytes, filename: str, kind: str, user, request, dry_run: bool = False):
+def _resolve_mapping(db, kind: str, mapping_id: int | None, mapping_json: str | None) -> dict[str, str] | None:
+    if mapping_id:
+        m = db.get(ImportMapping, mapping_id)
+        if not m or m.kind != kind:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "映射模板不存在或类型不匹配")
+        return m.mapping
+    if mapping_json:
+        try:
+            data = json.loads(mapping_json)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"mapping JSON 解析失败: {e}") from e
+        if not isinstance(data, dict):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "mapping 必须是 {源列名: 目标字段} 字典")
+        return {str(k): str(v) for k, v in data.items()}
+    return None
+
+
+def _run(*, db, data: bytes, filename: str, kind: str, user, request, dry_run: bool = False,
+         mapping: dict[str, str] | None = None):
     """所有 import_* 端点的统一路径：解析 → run_import → 审计 → 返回汇总。"""
     try:
         df = importer.parse_table(data, filename)
@@ -35,7 +56,7 @@ def _run(*, db, data: bytes, filename: str, kind: str, user, request, dry_run: b
     try:
         batch = importer.run_import(
             db, kind=kind, df=df, operator_id=user.id if user else None,
-            filename=filename, dry_run=dry_run,
+            filename=filename, dry_run=dry_run, mapping=mapping,
         )
     except Exception:
         db.rollback()
@@ -77,36 +98,52 @@ def _run(*, db, data: bytes, filename: str, kind: str, user, request, dry_run: b
 async def import_students(
     db: DbSession, file: UploadFile, current: CurrentUser, request: Request,
     dry_run: bool = Query(False, description="预检模式：不落库，仅返回将要发生的变更与错误"),
+    mapping_id: int | None = Form(None),
+    mapping: str | None = Form(None, description='{源列名: 目标字段} JSON 字符串'),
 ):
     data = await _read(file)
-    return _run(db=db, data=data, filename=file.filename, kind="students", user=current, request=request, dry_run=dry_run)
+    m = _resolve_mapping(db, "students", mapping_id, mapping)
+    return _run(db=db, data=data, filename=file.filename, kind="students", user=current,
+                request=request, dry_run=dry_run, mapping=m)
 
 
 @router.post("/courses", summary="导入课程主数据")
 async def import_courses(
     db: DbSession, file: UploadFile, current: CurrentUser, request: Request,
     dry_run: bool = Query(False),
+    mapping_id: int | None = Form(None),
+    mapping: str | None = Form(None),
 ):
     data = await _read(file)
-    return _run(db=db, data=data, filename=file.filename, kind="courses", user=current, request=request, dry_run=dry_run)
+    m = _resolve_mapping(db, "courses", mapping_id, mapping)
+    return _run(db=db, data=data, filename=file.filename, kind="courses", user=current,
+                request=request, dry_run=dry_run, mapping=m)
 
 
 @router.post("/programs", summary="导入培养方案 + 学分桶 + 课程映射")
 async def import_program(
     db: DbSession, file: UploadFile, current: CurrentUser, request: Request,
     dry_run: bool = Query(False),
+    mapping_id: int | None = Form(None),
+    mapping: str | None = Form(None),
 ):
     data = await _read(file)
-    return _run(db=db, data=data, filename=file.filename, kind="programs", user=current, request=request, dry_run=dry_run)
+    m = _resolve_mapping(db, "programs", mapping_id, mapping)
+    return _run(db=db, data=data, filename=file.filename, kind="programs", user=current,
+                request=request, dry_run=dry_run, mapping=m)
 
 
 @router.post("/grades", summary="导入成绩")
 async def import_grades(
     db: DbSession, file: UploadFile, current: CurrentUser, request: Request,
     dry_run: bool = Query(False),
+    mapping_id: int | None = Form(None),
+    mapping: str | None = Form(None),
 ):
     data = await _read(file)
-    return _run(db=db, data=data, filename=file.filename, kind="grades", user=current, request=request, dry_run=dry_run)
+    m = _resolve_mapping(db, "grades", mapping_id, mapping)
+    return _run(db=db, data=data, filename=file.filename, kind="grades", user=current,
+                request=request, dry_run=dry_run, mapping=m)
 
 
 @router.get("/templates", summary="导入模板列名说明")
@@ -148,6 +185,55 @@ def get_batch(batch_id: int, db: DbSession):
     if not batch:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "批次不存在")
     return ImportBatchDetail.model_validate(batch)
+
+
+# ----- 字段映射模板 CRUD -----
+
+@router.get("/mappings", response_model=list[ImportMappingRead], summary="字段映射模板列表")
+def list_mappings(db: DbSession, kind: str | None = None):
+    stmt = select(ImportMapping).order_by(ImportMapping.kind, ImportMapping.name)
+    if kind:
+        stmt = stmt.where(ImportMapping.kind == kind)
+    return [ImportMappingRead.model_validate(m) for m in db.scalars(stmt)]
+
+
+@router.post("/mappings", response_model=ImportMappingRead, summary="新建映射模板")
+def create_mapping(payload: ImportMappingCreate, db: DbSession, current: CurrentUser):
+    if db.scalar(select(ImportMapping).where(
+        ImportMapping.kind == payload.kind, ImportMapping.name == payload.name,
+    )):
+        raise HTTPException(status.HTTP_409_CONFLICT, "同类型下已存在同名模板")
+    m = ImportMapping(
+        kind=payload.kind, name=payload.name, mapping=payload.mapping,
+        is_default=payload.is_default, created_by=current.id,
+    )
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return ImportMappingRead.model_validate(m)
+
+
+@router.put("/mappings/{mapping_id}", response_model=ImportMappingRead, summary="更新映射模板")
+def update_mapping(mapping_id: int, payload: ImportMappingUpdate, db: DbSession):
+    m = db.get(ImportMapping, mapping_id)
+    if not m:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "模板不存在")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(m, k, v)
+    db.commit()
+    db.refresh(m)
+    return ImportMappingRead.model_validate(m)
+
+
+@router.delete("/mappings/{mapping_id}", summary="删除映射模板")
+def delete_mapping(mapping_id: int, db: DbSession):
+    m = db.get(ImportMapping, mapping_id)
+    if not m:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "模板不存在")
+    db.delete(m)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/batches/{batch_id}/errors.xlsx", summary="下载导入错误清单 Excel")
