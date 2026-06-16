@@ -1,4 +1,8 @@
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
 from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession, require_staff
@@ -21,7 +25,7 @@ async def _read(file: UploadFile) -> bytes:
     return data
 
 
-def _run(*, db, data: bytes, filename: str, kind: str, user, request):
+def _run(*, db, data: bytes, filename: str, kind: str, user, request, dry_run: bool = False):
     """所有 import_* 端点的统一路径：解析 → run_import → 审计 → 返回汇总。"""
     try:
         df = importer.parse_table(data, filename)
@@ -31,7 +35,7 @@ def _run(*, db, data: bytes, filename: str, kind: str, user, request):
     try:
         batch = importer.run_import(
             db, kind=kind, df=df, operator_id=user.id if user else None,
-            filename=filename,
+            filename=filename, dry_run=dry_run,
         )
     except Exception:
         db.rollback()
@@ -43,6 +47,7 @@ def _run(*, db, data: bytes, filename: str, kind: str, user, request):
         detail={
             "filename": filename,
             "status": batch.status,
+            "dry_run": dry_run,
             "created": batch.created_count,
             "updated": batch.updated_count,
             "skipped": batch.skipped_count,
@@ -52,38 +57,56 @@ def _run(*, db, data: bytes, filename: str, kind: str, user, request):
     )
     db.commit()
     db.refresh(batch)
-    return {
+    resp = {
         "batch_id": batch.id,
         "status": batch.status,
+        "dry_run": batch.dry_run,
         "created": batch.created_count,
         "updated": batch.updated_count,
         "skipped": batch.skipped_count,
         "errors": batch.errors or [],
     }
+    if dry_run:
+        # 给前端预检对话框提供"将创建/将更新"语义化字段
+        resp["would_create"] = batch.created_count
+        resp["would_update"] = batch.updated_count
+    return resp
 
 
 @router.post("/students", summary="导入学生名册")
-async def import_students(db: DbSession, file: UploadFile, current: CurrentUser, request: Request):
+async def import_students(
+    db: DbSession, file: UploadFile, current: CurrentUser, request: Request,
+    dry_run: bool = Query(False, description="预检模式：不落库，仅返回将要发生的变更与错误"),
+):
     data = await _read(file)
-    return _run(db=db, data=data, filename=file.filename, kind="students", user=current, request=request)
+    return _run(db=db, data=data, filename=file.filename, kind="students", user=current, request=request, dry_run=dry_run)
 
 
 @router.post("/courses", summary="导入课程主数据")
-async def import_courses(db: DbSession, file: UploadFile, current: CurrentUser, request: Request):
+async def import_courses(
+    db: DbSession, file: UploadFile, current: CurrentUser, request: Request,
+    dry_run: bool = Query(False),
+):
     data = await _read(file)
-    return _run(db=db, data=data, filename=file.filename, kind="courses", user=current, request=request)
+    return _run(db=db, data=data, filename=file.filename, kind="courses", user=current, request=request, dry_run=dry_run)
 
 
 @router.post("/programs", summary="导入培养方案 + 学分桶 + 课程映射")
-async def import_program(db: DbSession, file: UploadFile, current: CurrentUser, request: Request):
+async def import_program(
+    db: DbSession, file: UploadFile, current: CurrentUser, request: Request,
+    dry_run: bool = Query(False),
+):
     data = await _read(file)
-    return _run(db=db, data=data, filename=file.filename, kind="programs", user=current, request=request)
+    return _run(db=db, data=data, filename=file.filename, kind="programs", user=current, request=request, dry_run=dry_run)
 
 
 @router.post("/grades", summary="导入成绩")
-async def import_grades(db: DbSession, file: UploadFile, current: CurrentUser, request: Request):
+async def import_grades(
+    db: DbSession, file: UploadFile, current: CurrentUser, request: Request,
+    dry_run: bool = Query(False),
+):
     data = await _read(file)
-    return _run(db=db, data=data, filename=file.filename, kind="grades", user=current, request=request)
+    return _run(db=db, data=data, filename=file.filename, kind="grades", user=current, request=request, dry_run=dry_run)
 
 
 @router.get("/templates", summary="导入模板列名说明")
@@ -125,3 +148,27 @@ def get_batch(batch_id: int, db: DbSession):
     if not batch:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "批次不存在")
     return ImportBatchDetail.model_validate(batch)
+
+
+@router.get("/batches/{batch_id}/errors.xlsx", summary="下载导入错误清单 Excel")
+def download_batch_errors(batch_id: int, db: DbSession):
+    batch = db.get(ImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "批次不存在")
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "errors"
+    ws.append(["行号", "错误信息"])
+    for e in batch.errors or []:
+        ws.append([e.get("row"), e.get("message")])
+    ws.column_dimensions["A"].width = 10
+    ws.column_dimensions["B"].width = 80
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_name = f"import_errors_batch{batch_id}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )

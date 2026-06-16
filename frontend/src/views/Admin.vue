@@ -61,12 +61,40 @@
         <div v-if="batchDetail">
           <p>文件：{{ batchDetail.filename }}　类型：{{ batchDetail.kind }}　状态：{{ batchDetail.status }}</p>
           <p>新建 {{ batchDetail.created_count }}　更新 {{ batchDetail.updated_count }}　跳过 {{ batchDetail.skipped_count }}　错误 {{ batchDetail.error_count }}</p>
-          <el-table v-if="batchDetail.errors?.length" :data="batchDetail.errors" border max-height="320">
+          <el-button v-if="batchDetail.error_count" size="small" @click="downloadErrorReport(batchDetail.id)">
+            下载错误报告 (.xlsx)
+          </el-button>
+          <el-table v-if="batchDetail.errors?.length" :data="batchDetail.errors" border max-height="320" style="margin-top: 12px">
             <el-table-column prop="row" label="行号" width="80" />
             <el-table-column prop="message" label="错误" />
           </el-table>
           <el-empty v-else description="本次导入无错误行" />
         </div>
+      </el-dialog>
+
+      <el-dialog v-model="previewVisible" title="导入预检" width="640px">
+        <div v-if="preview">
+          <p>本次将对 <b>{{ preview.kind }}</b> 数据：</p>
+          <el-tag type="success">新建 {{ preview.wouldCreate }}</el-tag>
+          <el-tag type="warning" style="margin-left: 6px">更新 {{ preview.wouldUpdate }}</el-tag>
+          <el-tag v-if="preview.errors.length" type="danger" style="margin-left: 6px">
+            错误 {{ preview.errors.length }}
+          </el-tag>
+          <el-table v-if="preview.errors.length" :data="preview.errors" border max-height="280" style="margin-top: 12px">
+            <el-table-column prop="row" label="行号" width="80" />
+            <el-table-column prop="message" label="错误" />
+          </el-table>
+          <p v-if="preview.errors.length" style="color:#94a3b8;font-size:12px;margin-top:8px">
+            错误行不会被导入；如需修复后重新预检，请取消并重新上传。
+          </p>
+        </div>
+        <template #footer>
+          <el-button v-if="preview?.errors.length" @click="downloadErrorReport(preview!.batchId)">下载错误报告</el-button>
+          <el-button @click="previewVisible = false">取消</el-button>
+          <el-button type="primary" :loading="submitting" @click="confirmImport">
+            确认导入
+          </el-button>
+        </template>
       </el-dialog>
     </el-tab-pane>
 
@@ -215,12 +243,54 @@ const IMPORT_KINDS = [
 interface ImportRes { created: number; updated: number; skipped: number; errors: { row: number; message: string }[] }
 const results = reactive<Record<string, ImportRes>>({})
 
-async function onUpload(kind: 'students' | 'courses' | 'programs' | 'grades', file: File) {
-  const r = (await importsApi.upload(kind, file)) as ImportRes
-  results[kind] = r
-  ElMessage.success(`新建 ${r.created} / 更新 ${r.updated} / 错误 ${r.errors?.length ?? 0}`)
+type ImportKind = 'students' | 'courses' | 'programs' | 'grades'
+
+const preview = ref<{
+  kind: ImportKind
+  file: File
+  batchId: number
+  wouldCreate: number
+  wouldUpdate: number
+  errors: { row: number; message: string }[]
+} | null>(null)
+const previewVisible = ref(false)
+const submitting = ref(false)
+
+async function onUpload(kind: ImportKind, file: File) {
+  // 默认先 dry-run 预检
+  const dry = await importsApi.upload(kind, file, { dryRun: true })
+  preview.value = {
+    kind,
+    file,
+    batchId: dry.batch_id,
+    wouldCreate: dry.would_create ?? dry.created,
+    wouldUpdate: dry.would_update ?? dry.updated,
+    errors: dry.errors ?? [],
+  }
+  previewVisible.value = true
   loadBatches()
   return false
+}
+
+async function confirmImport() {
+  if (!preview.value) return
+  submitting.value = true
+  try {
+    const r = await importsApi.upload(preview.value.kind, preview.value.file)
+    results[preview.value.kind] = r as ImportRes
+    ElMessage.success(`新建 ${r.created} / 更新 ${r.updated} / 错误 ${r.errors?.length ?? 0}`)
+    previewVisible.value = false
+    loadBatches()
+  } finally {
+    submitting.value = false
+  }
+}
+
+function downloadErrorReport(batchId: number) {
+  const link = document.createElement('a')
+  link.href = importsApi.errorReportUrl(batchId)
+  link.download = `import_errors_batch${batchId}.xlsx`
+  link.click()
 }
 
 // 导入历史

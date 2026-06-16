@@ -161,14 +161,21 @@ export interface ImportBatchDetail extends ImportBatchSummary {
 
 export const importsApi = {
   templates: () => http.get('/imports/templates').then((r) => r.data),
-  upload: (kind: 'students' | 'courses' | 'programs' | 'grades', file: File) => {
+  upload: (
+    kind: 'students' | 'courses' | 'programs' | 'grades',
+    file: File,
+    opts: { dryRun?: boolean } = {},
+  ) => {
     const fd = new FormData()
     fd.append('file', file)
     return http
       .post<{
-        batch_id: number; status: string; created: number; updated: number;
-        skipped: number; errors: { row: number; message: string }[]
+        batch_id: number; status: string; dry_run: boolean;
+        created: number; updated: number; skipped: number;
+        would_create?: number; would_update?: number;
+        errors: { row: number; message: string }[]
       }>(`/imports/${kind}`, fd, {
+        params: opts.dryRun ? { dry_run: true } : undefined,
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       .then((r) => r.data)
@@ -176,6 +183,7 @@ export const importsApi = {
   batches: (params?: { kind?: string; page?: number; size?: number }) =>
     http.get<{ items: ImportBatchSummary[]; total: number }>('/imports/batches', { params }).then((r) => r.data),
   batchDetail: (id: number) => http.get<ImportBatchDetail>(`/imports/batches/${id}`).then((r) => r.data),
+  errorReportUrl: (batchId: number) => `/api/v1/imports/batches/${batchId}/errors.xlsx`,
 }
 
 export interface LLMConfig {
