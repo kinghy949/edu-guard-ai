@@ -20,6 +20,54 @@
           </el-card>
         </el-col>
       </el-row>
+
+      <el-card style="margin-top: 16px">
+        <template #header>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span>导入历史</span>
+            <el-button size="small" @click="loadBatches">刷新</el-button>
+          </div>
+        </template>
+        <el-table :data="batches" border>
+          <el-table-column prop="id" label="#" width="60" />
+          <el-table-column prop="created_at" label="时间" width="180" />
+          <el-table-column prop="kind" label="类型" width="100" />
+          <el-table-column prop="filename" label="文件" />
+          <el-table-column label="状态" width="120">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'completed' ? 'success' : row.status === 'rolled_back' ? 'danger' : 'info'">
+                {{ row.status }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="新建/更新/错误" width="160">
+            <template #default="{ row }">{{ row.created_count }} / {{ row.updated_count }} / {{ row.error_count }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button link size="small" @click="showBatch(row.id)">详情</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-pagination
+          background layout="prev, pager, next, total"
+          :current-page="batchPage" :page-size="batchSize" :total="batchTotal"
+          @current-change="(p: number) => { batchPage = p; loadBatches() }"
+          style="margin-top: 12px"
+        />
+      </el-card>
+
+      <el-dialog v-model="batchDetailVisible" :title="`批次 #${batchDetail?.id}`" width="720px">
+        <div v-if="batchDetail">
+          <p>文件：{{ batchDetail.filename }}　类型：{{ batchDetail.kind }}　状态：{{ batchDetail.status }}</p>
+          <p>新建 {{ batchDetail.created_count }}　更新 {{ batchDetail.updated_count }}　跳过 {{ batchDetail.skipped_count }}　错误 {{ batchDetail.error_count }}</p>
+          <el-table v-if="batchDetail.errors?.length" :data="batchDetail.errors" border max-height="320">
+            <el-table-column prop="row" label="行号" width="80" />
+            <el-table-column prop="message" label="错误" />
+          </el-table>
+          <el-empty v-else description="本次导入无错误行" />
+        </div>
+      </el-dialog>
     </el-tab-pane>
 
     <!-- 触发预警 -->
@@ -147,7 +195,11 @@
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 
-import { type AuditLog, auditApi, importsApi, llmConfigApi, notificationsApi, warningsApi } from '../api/endpoints'
+import {
+  type AuditLog, auditApi,
+  type ImportBatchDetail, type ImportBatchSummary,
+  importsApi, llmConfigApi, notificationsApi, warningsApi,
+} from '../api/endpoints'
 import { useUserStore } from '../stores/user'
 
 const user = useUserStore()
@@ -167,7 +219,27 @@ async function onUpload(kind: 'students' | 'courses' | 'programs' | 'grades', fi
   const r = (await importsApi.upload(kind, file)) as ImportRes
   results[kind] = r
   ElMessage.success(`新建 ${r.created} / 更新 ${r.updated} / 错误 ${r.errors?.length ?? 0}`)
+  loadBatches()
   return false
+}
+
+// 导入历史
+const batches = ref<ImportBatchSummary[]>([])
+const batchPage = ref(1)
+const batchSize = ref(20)
+const batchTotal = ref(0)
+const batchDetail = ref<ImportBatchDetail | null>(null)
+const batchDetailVisible = ref(false)
+
+async function loadBatches() {
+  const data = await importsApi.batches({ page: batchPage.value, size: batchSize.value })
+  batches.value = data.items
+  batchTotal.value = data.total
+}
+
+async function showBatch(id: number) {
+  batchDetail.value = await importsApi.batchDetail(id)
+  batchDetailVisible.value = true
 }
 
 const gen = reactive({
@@ -292,6 +364,7 @@ async function loadAudit() {
 }
 
 onMounted(() => {
+  loadBatches()
   loadConfigs()
   loadLLM()
   loadAudit()

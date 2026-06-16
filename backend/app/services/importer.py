@@ -1,8 +1,8 @@
 """教务数据批量导入。
 
 - 入口接受 ``bytes`` + 文件后缀，自动用 pandas 解析为 DataFrame。
-- 每个 ``import_*`` 函数返回 ``ImportResult``：created/updated/skipped/errors。
-- 所有写入在同一事务中执行，整体失败回滚。
+- 每个 ``import_*`` 函数返回 ``ImportResult``：created/updated/skipped/errors/rows。
+- ``run_import`` 是统一入口：包装事务、登记 ``import_batches``、支持 dry-run（savepoint 回滚业务写入但保留批次记录）。
 """
 from __future__ import annotations
 
@@ -15,12 +15,26 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.core.security import hash_password
 from app.models.course import Course
 from app.models.grade import Grade, GradeStatus
+from app.models.import_batch import ImportBatch, ImportBatchRow
 from app.models.program import CreditBucket, Program, ProgramCourse
 from app.models.student import Student
 from app.models.user import User, UserRole
+
+log = get_logger("importer")
+
+
+@dataclass
+class RowChange:
+    """单行写入痕迹，供导入历史与回滚使用。"""
+    row_no: int | None
+    op: str  # create / update
+    table_name: str
+    record_pk: int | None
+    before: dict[str, Any] | None = None  # update 时填变更字段旧值
 
 
 @dataclass
@@ -29,9 +43,26 @@ class ImportResult:
     updated: int = 0
     skipped: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
+    rows: list[RowChange] = field(default_factory=list)
 
     def add_error(self, row: int, message: str) -> None:
         self.errors.append({"row": row, "message": message})
+
+    def add_row(self, change: RowChange) -> None:
+        self.rows.append(change)
+
+
+def _snapshot_before(obj: Any, fields: tuple[str, ...]) -> dict[str, Any]:
+    """对 SQLAlchemy 模型对象抓取指定字段当前值（即将被覆盖的旧值）。"""
+    snap: dict[str, Any] = {}
+    for f in fields:
+        v = getattr(obj, f, None)
+        # Decimal / datetime 等无法直接进 JSONB，统一字符串化
+        if isinstance(v, Decimal):
+            snap[f] = str(v)
+        else:
+            snap[f] = v if v is None or isinstance(v, (str, int, float, bool)) else str(v)
+    return snap
 
 
 def parse_table(content: bytes, filename: str) -> pd.DataFrame:
@@ -86,12 +117,14 @@ def import_students(db: Session, df: pd.DataFrame, default_role: str = UserRole.
 
         student = db.scalar(select(Student).where(Student.student_no == row["student_no"]))
         if student:
+            before = _snapshot_before(student, ("name", "gender", "college", "major", "class_name"))
             student.name = row["name"]
             student.gender = row.get("gender") or None
             student.college = row["college"]
             student.major = row["major"]
             student.class_name = row.get("class_name") or None
             result.updated += 1
+            result.add_row(RowChange(line, "update", "students", student.id, before))
             continue
 
         user = User(
@@ -106,7 +139,7 @@ def import_students(db: Session, df: pd.DataFrame, default_role: str = UserRole.
         )
         db.add(user)
         db.flush()
-        db.add(Student(
+        new_student = Student(
             user_id=user.id,
             student_no=row["student_no"],
             name=row["name"],
@@ -115,8 +148,11 @@ def import_students(db: Session, df: pd.DataFrame, default_role: str = UserRole.
             college=row["college"],
             major=row["major"],
             class_name=row.get("class_name") or None,
-        ))
+        )
+        db.add(new_student)
+        db.flush()
         result.created += 1
+        result.add_row(RowChange(line, "create", "students", new_student.id))
     return result
 
 
@@ -143,22 +179,27 @@ def import_courses(db: Session, df: pd.DataFrame) -> ImportResult:
 
         course = db.scalar(select(Course).where(Course.code == row["code"]))
         if course:
+            before = _snapshot_before(course, ("name", "credits", "hours", "category_default", "description"))
             course.name = row["name"]
             course.credits = credits
             course.hours = hours
             course.category_default = row.get("category_default") or None
             course.description = row.get("description") or None
             result.updated += 1
+            result.add_row(RowChange(line, "update", "courses", course.id, before))
         else:
-            db.add(Course(
+            new_course = Course(
                 code=row["code"],
                 name=row["name"],
                 credits=credits,
                 hours=hours,
                 category_default=row.get("category_default") or None,
                 description=row.get("description") or None,
-            ))
+            )
+            db.add(new_course)
+            db.flush()
             result.created += 1
+            result.add_row(RowChange(line, "create", "courses", new_course.id))
     return result
 
 
@@ -242,19 +283,24 @@ def import_program(db: Session, df: pd.DataFrame) -> ImportResult:
         is_required = row.get("is_required", "").lower() in {"1", "true", "y", "是", "必修"}
         sem = int(row["semester_suggested"]) if row.get("semester_suggested") else None
         if pc:
+            before = _snapshot_before(pc, ("bucket_id", "is_required", "semester_suggested"))
             pc.bucket_id = bucket.id
             pc.is_required = is_required
             pc.semester_suggested = sem
             result.updated += 1
+            result.add_row(RowChange(line, "update", "program_courses", pc.id, before))
         else:
-            db.add(ProgramCourse(
+            new_pc = ProgramCourse(
                 program_id=program.id,
                 course_id=course.id,
                 bucket_id=bucket.id,
                 is_required=is_required,
                 semester_suggested=sem,
-            ))
+            )
+            db.add(new_pc)
+            db.flush()
             result.created += 1
+            result.add_row(RowChange(line, "create", "program_courses", new_pc.id))
     return result
 
 
@@ -304,18 +350,114 @@ def import_grades(db: Session, df: pd.DataFrame) -> ImportResult:
             Grade.semester == row["semester"],
         ))
         if grade:
+            before = _snapshot_before(grade, ("credits_earned", "score", "status"))
             grade.credits_earned = credits_earned
             grade.score = score
             grade.status = status
             result.updated += 1
+            result.add_row(RowChange(line, "update", "grades", grade.id, before))
         else:
-            db.add(Grade(
+            new_grade = Grade(
                 student_id=student.id,
                 course_id=course.id,
                 semester=row["semester"],
                 credits_earned=credits_earned,
                 score=score,
                 status=status,
-            ))
+            )
+            db.add(new_grade)
+            db.flush()
             result.created += 1
+            result.add_row(RowChange(line, "create", "grades", new_grade.id))
     return result
+
+
+# ----- 统一入口：包事务 + 写批次记录 -----
+
+IMPORTERS = {
+    "students": import_students,
+    "courses": import_courses,
+    "programs": import_program,
+    "grades": import_grades,
+}
+
+
+def run_import(
+    db: Session,
+    *,
+    kind: str,
+    df: pd.DataFrame,
+    operator_id: int | None,
+    filename: str,
+    mapping: dict[str, str] | None = None,
+    dry_run: bool = False,
+) -> ImportBatch:
+    """统一导入入口：执行 importer + 落 ImportBatch / ImportBatchRow。
+
+    - dry_run=True：业务写入在 savepoint 内 rollback；批次记录在外层事务保留。
+    - 非 dry_run：业务全部失败（且无成功）时整体 rollback，批次 status=rolled_back；
+      其余情况 commit，status=completed。
+    """
+    if kind not in IMPORTERS:
+        raise ValueError(f"不支持的导入类型: {kind}")
+    importer_fn = IMPORTERS[kind]
+    total_rows = int(len(df.index)) if df is not None else 0
+    log.info("import_start", kind=kind, filename=filename, total_rows=total_rows, dry_run=dry_run)
+
+    result: ImportResult
+    status_str: str
+
+    if dry_run:
+        # 嵌套事务（savepoint）：执行后 rollback，业务写入回退，外层事务仍可用
+        sp = db.begin_nested()
+        try:
+            result = importer_fn(db, df)
+        finally:
+            sp.rollback()
+        status_str = "dry_run"
+    else:
+        # 业务全错且无成功 → 整体回滚事务（与历史行为一致）
+        sp = db.begin_nested()
+        try:
+            result = importer_fn(db, df)
+            if result.errors and result.created == 0 and result.updated == 0:
+                sp.rollback()
+                status_str = "rolled_back"
+            else:
+                sp.commit()
+                status_str = "completed"
+        except Exception:
+            sp.rollback()
+            raise
+
+    batch = ImportBatch(
+        kind=kind,
+        filename=filename,
+        status=status_str,
+        dry_run=dry_run,
+        total_rows=total_rows,
+        created_count=result.created,
+        updated_count=result.updated,
+        skipped_count=result.skipped,
+        error_count=len(result.errors),
+        errors=result.errors or None,
+        mapping=mapping,
+        operator_id=operator_id,
+    )
+    db.add(batch)
+    db.flush()
+    # 写行级快照（仅非 dry-run 且实际写入了的行；dry_run 也记录便于预检参考）
+    for rc in result.rows:
+        db.add(ImportBatchRow(
+            batch_id=batch.id,
+            row_no=rc.row_no,
+            op=rc.op,
+            table_name=rc.table_name,
+            record_pk=rc.record_pk,
+            before=rc.before,
+        ))
+    log.info(
+        "import_finish", kind=kind, filename=filename, status=status_str,
+        created=result.created, updated=result.updated, error_count=len(result.errors),
+    )
+    return batch

@@ -139,17 +139,43 @@ export const chatApi = {
   deleteSession: (id: number) => http.delete(`/chat/sessions/${id}`),
 }
 
+export interface ImportBatchSummary {
+  id: number
+  kind: string
+  filename: string | null
+  status: string
+  dry_run: boolean
+  total_rows: number
+  created_count: number
+  updated_count: number
+  skipped_count: number
+  error_count: number
+  operator_id: number | null
+  created_at: string
+}
+
+export interface ImportBatchDetail extends ImportBatchSummary {
+  errors: { row: number; message: string }[] | null
+  mapping: Record<string, string> | null
+}
+
 export const importsApi = {
   templates: () => http.get('/imports/templates').then((r) => r.data),
   upload: (kind: 'students' | 'courses' | 'programs' | 'grades', file: File) => {
     const fd = new FormData()
     fd.append('file', file)
     return http
-      .post(`/imports/${kind}`, fd, {
+      .post<{
+        batch_id: number; status: string; created: number; updated: number;
+        skipped: number; errors: { row: number; message: string }[]
+      }>(`/imports/${kind}`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       .then((r) => r.data)
   },
+  batches: (params?: { kind?: string; page?: number; size?: number }) =>
+    http.get<{ items: ImportBatchSummary[]; total: number }>('/imports/batches', { params }).then((r) => r.data),
+  batchDetail: (id: number) => http.get<ImportBatchDetail>(`/imports/batches/${id}`).then((r) => r.data),
 }
 
 export interface LLMConfig {
