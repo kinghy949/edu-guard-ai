@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -9,11 +7,12 @@ from app.api.v1._helpers import get_or_404
 from app.core.logging import get_logger
 from app.models.student import Student
 from app.models.user import UserRole
-from app.models.warning import Warning
-from app.schemas.warning import WarningRead
+from app.models.warning import Warning, WarningAction, WarningActionType
+from app.schemas.warning import WarningActionCreate, WarningActionRead, WarningRead
 from app.services.audit import record_audit
 from app.services.notify_dispatcher import dispatch_warning
 from app.services.warning_engine import generate_batch, generate_for_student
+from app.services.warning_workflow import apply_action
 
 log = get_logger("warnings")
 
@@ -41,6 +40,8 @@ def list_warnings(
     student_id: int | None = None,
     level: str | None = None,
     semester: str | None = None,
+    status_: str | None = None,
+    assignee_id: int | None = None,
     only_open: bool = False,
     skip: int = 0,
     limit: int = 100,
@@ -58,8 +59,12 @@ def list_warnings(
         stmt = stmt.where(Warning.level == level)
     if semester:
         stmt = stmt.where(Warning.semester == semester)
+    if status_:
+        stmt = stmt.where(Warning.status == status_)
+    if assignee_id is not None:
+        stmt = stmt.where(Warning.assignee_id == assignee_id)
     if only_open:
-        stmt = stmt.where(Warning.resolved_at.is_(None))
+        stmt = stmt.where(Warning.status.in_(["open", "following"]))
 
     return db.scalars(stmt.order_by(Warning.created_at.desc()).offset(skip).limit(limit)).all()
 
@@ -135,10 +140,9 @@ def generate_one(student_id: int, db: DbSession, semester: str | None = None):
 
 @router.post("/{warning_id}/resolve", response_model=WarningRead, dependencies=[Depends(require_staff)])
 def resolve(warning_id: int, payload: ResolveRequest, db: DbSession, current: CurrentUser, request: Request):
+    """兼容入口：等价于 actions(action=resolve)，保留旧调用方式。"""
     w = get_or_404(db, Warning, warning_id, "预警")
-    w.resolved_at = datetime.now(timezone.utc)
-    if payload.note:
-        w.resolver_note = payload.note
+    apply_action(db, w, current, WarningActionType.RESOLVE, payload.note)
     record_audit(
         db, user=current, action="warnings.resolve",
         resource_type="warning", resource_id=warning_id,
@@ -147,3 +151,43 @@ def resolve(warning_id: int, payload: ResolveRequest, db: DbSession, current: Cu
     db.commit()
     db.refresh(w)
     return w
+
+
+@router.post(
+    "/{warning_id}/actions",
+    response_model=WarningRead,
+    dependencies=[Depends(require_staff)],
+    summary="对预警执行处理流操作（comment/follow/resolve/ignore/reopen）",
+)
+def execute_action(
+    warning_id: int, payload: WarningActionCreate, db: DbSession,
+    current: CurrentUser, request: Request,
+):
+    w = get_or_404(db, Warning, warning_id, "预警")
+    apply_action(db, w, current, payload.action, payload.note)
+    record_audit(
+        db, user=current, action=f"warnings.action.{payload.action}",
+        resource_type="warning", resource_id=warning_id,
+        detail={"note": payload.note, "new_status": w.status},
+        request=request,
+    )
+    db.commit()
+    db.refresh(w)
+    return w
+
+
+@router.get(
+    "/{warning_id}/actions",
+    response_model=list[WarningActionRead],
+    dependencies=[Depends(require_staff)],
+    summary="查看预警跟进时间线（staff 专用）",
+)
+def list_actions(warning_id: int, db: DbSession):
+    # 仅 staff 可见，学生不参与工作流细节
+    get_or_404(db, Warning, warning_id, "预警")
+    rows = db.scalars(
+        select(WarningAction)
+        .where(WarningAction.warning_id == warning_id)
+        .order_by(WarningAction.id.desc())
+    )
+    return [WarningActionRead.model_validate(r) for r in rows]

@@ -43,6 +43,9 @@ export interface ProgressReport {
   failed_courses: { id: number; code: string; name: string; credits: string }[]
 }
 
+export type WarningStatus = 'open' | 'following' | 'resolved' | 'ignored'
+export type WarningActionType = 'comment' | 'follow' | 'resolve' | 'ignore' | 'reopen'
+
 export interface Warning {
   id: number
   student_id: number
@@ -52,8 +55,19 @@ export interface Warning {
   detail: Record<string, unknown> | null
   resolved_at: string | null
   resolver_note: string | null
+  status: WarningStatus
+  assignee_id: number | null
   created_at: string
   updated_at: string
+}
+
+export interface WarningAction {
+  id: number
+  warning_id: number
+  user_id: number | null
+  action: WarningActionType
+  note: string | null
+  created_at: string
 }
 
 export interface ChatSession {
@@ -122,6 +136,10 @@ export const warningsApi = {
   }) => http.post('/warnings/generate', payload).then((r) => r.data),
   resolve: (id: number, note?: string) =>
     http.post(`/warnings/${id}/resolve`, { note }).then((r) => r.data),
+  actions: (id: number) =>
+    http.get<WarningAction[]>(`/warnings/${id}/actions`).then((r) => r.data),
+  applyAction: (id: number, action: WarningActionType, note?: string) =>
+    http.post<Warning>(`/warnings/${id}/actions`, { action, note }).then((r) => r.data),
 }
 
 export const chatApi = {
