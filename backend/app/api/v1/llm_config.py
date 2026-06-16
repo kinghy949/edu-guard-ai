@@ -6,7 +6,9 @@ from app.api.deps import CurrentUser, DbSession, require_admin
 from app.core.crypto import decrypt_str, encrypt_str, looks_masked, mask
 from app.models.llm_config import LLMConfig
 from app.schemas.llm_config import (
-    LLMConfigRead, LLMConfigTestRequest, LLMConfigUpdate,
+    LLMConfigRead,
+    LLMConfigTestRequest,
+    LLMConfigUpdate,
 )
 from app.services.audit import record_audit
 

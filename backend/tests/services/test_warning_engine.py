@@ -17,7 +17,6 @@ from app.services.warning_engine import (
     generate_batch,
     generate_for_student,
 )
-
 from tests.conftest import make_program_with_buckets, make_student
 
 

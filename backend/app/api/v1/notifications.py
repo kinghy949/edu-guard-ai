@@ -5,10 +5,12 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, DbSession, require_admin, require_staff
 from app.api.v1._helpers import apply_updates, get_or_404
 from app.models.notification import Notification, NotificationConfig
-from app.models.user import User, UserRole
+from app.models.user import UserRole
 from app.models.warning import Warning
 from app.schemas.notification import (
-    NotificationConfigRead, NotificationConfigUpdate, NotificationRead,
+    NotificationConfigRead,
+    NotificationConfigUpdate,
+    NotificationRead,
 )
 from app.services.audit import record_audit
 from app.services.notification_secrets import encrypt_config_for_write, mask_config_for_read

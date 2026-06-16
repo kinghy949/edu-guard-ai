@@ -20,7 +20,6 @@ from app.models.grade import GradeStatus
 from app.models.user import UserRole
 from app.models.warning import WarningLevel
 
-
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+psycopg://eduguard:eduguard@localhost:5432/eduguard_test",

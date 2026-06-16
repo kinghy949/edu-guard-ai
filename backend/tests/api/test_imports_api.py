@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Student, User
 from app.models.user import UserRole
-
 from tests.conftest import auth_header, make_user
 
 

@@ -41,3 +41,17 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = ["alembic/versions", "scripts/seed_demo.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = [
+    "E501",  # 长度由格式化器约束
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401", "F811"]

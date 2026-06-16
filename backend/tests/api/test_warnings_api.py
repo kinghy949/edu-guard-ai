@@ -4,9 +4,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.warning import Warning, WarningLevel
 from app.models.user import UserRole
-
+from app.models.warning import Warning, WarningLevel
 from tests.conftest import (
     auth_header,
     make_program_with_buckets,

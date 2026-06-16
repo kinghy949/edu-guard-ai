@@ -4,7 +4,6 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, DbSession, require_staff
 from app.api.v1._helpers import get_or_404
 from app.models.student import Student
-from app.models.user import UserRole
 from app.services.credit_compare import compute_student_progress, report_to_dict
 
 router = APIRouter()

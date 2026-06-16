@@ -80,11 +80,10 @@ def compute_student_progress(db: Session, student: Student) -> ProgressReport:
     # 拉取方案下的 buckets 与 program_course 映射
     buckets: list[CreditBucket] = []
     pc_by_course: dict[int, ProgramCourse] = {}
-    bucket_by_id: dict[int, CreditBucket] = {}
     courses_in_program: dict[int, Course] = {}
     if program:
         buckets = list(db.scalars(select(CreditBucket).where(CreditBucket.program_id == program.id)))
-        bucket_by_id = {b.id: b for b in buckets}
+        {b.id: b for b in buckets}
         program_courses = list(db.scalars(select(ProgramCourse).where(ProgramCourse.program_id == program.id)))
         pc_by_course = {pc.course_id: pc for pc in program_courses}
         if program_courses:
@@ -99,7 +98,6 @@ def compute_student_progress(db: Session, student: Student) -> ProgressReport:
         for b in buckets
     }
     # 虚拟桶：方案外课程
-    OTHER_KEY = None
     other_bucket = BucketProgress(bucket_id=None, category="__other__", required=ZERO)
 
     # 拉取学生成绩 + 课程

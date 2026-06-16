@@ -75,7 +75,7 @@ def test_change_password_flow(client, db):
 
 
 def test_register_rejects_weak_password(client, db):
-    admin = make_user(db, role="admin", username="admin_reg", password="AdminPass1")
+    make_user(db, role="admin", username="admin_reg", password="AdminPass1")
     db.commit()
     login = _login(client, "admin_reg", "AdminPass1").json()
     headers = {"Authorization": f"Bearer {login['access_token']}"}

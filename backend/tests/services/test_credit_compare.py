@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.models.grade import GradeStatus
 from app.services.credit_compare import compute_student_progress
-
 from tests.conftest import make_course, make_grade, make_program_with_buckets, make_student
 
 

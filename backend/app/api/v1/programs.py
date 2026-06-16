@@ -5,9 +5,13 @@ from app.api.deps import DbSession, require_admin, require_staff
 from app.api.v1._helpers import apply_updates, get_or_404
 from app.models.program import CreditBucket, Program, ProgramCourse
 from app.schemas.program import (
-    CreditBucketCreate, CreditBucketRead,
-    ProgramCourseCreate, ProgramCourseRead,
-    ProgramCreate, ProgramRead, ProgramUpdate,
+    CreditBucketCreate,
+    CreditBucketRead,
+    ProgramCourseCreate,
+    ProgramCourseRead,
+    ProgramCreate,
+    ProgramRead,
+    ProgramUpdate,
 )
 
 router = APIRouter()

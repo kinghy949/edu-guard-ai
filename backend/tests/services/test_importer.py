@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.models import Course, Grade, Program, ProgramCourse, Student, User
 from app.models.grade import GradeStatus
 from app.services.importer import import_courses, import_grades, import_program, import_students
-
 from tests.conftest import make_course, make_student
 
 

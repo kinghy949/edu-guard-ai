@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.ai import LLMError, NO_CONTEXT_HINT, SYSTEM_PROMPT, build_student_context, chat, chat_stream, load_runtime
+from app.ai import NO_CONTEXT_HINT, SYSTEM_PROMPT, LLMError, build_student_context, chat, chat_stream, load_runtime
 from app.api.deps import CurrentUser, DbSession
 from app.api.v1._helpers import get_or_404
 from app.models.chat import ChatMessage, ChatSession

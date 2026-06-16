@@ -1,8 +1,19 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    audit, auth, chat, courses, grades, imports, llm_config, notifications, progress,
-    programs, students, users, warnings,
+    audit,
+    auth,
+    chat,
+    courses,
+    grades,
+    imports,
+    llm_config,
+    notifications,
+    programs,
+    progress,
+    students,
+    users,
+    warnings,
 )
 
 router = APIRouter()

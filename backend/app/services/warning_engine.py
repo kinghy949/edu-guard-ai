@@ -16,13 +16,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from typing import Iterable
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.grade import GradeStatus
 from app.models.student import Student
 from app.models.warning import Warning, WarningLevel
 from app.services.credit_compare import ProgressReport, compute_student_progress

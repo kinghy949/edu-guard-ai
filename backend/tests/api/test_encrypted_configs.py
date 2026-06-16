@@ -8,7 +8,7 @@ from tests.conftest import make_user
 
 
 def _admin_headers(client, db):
-    admin = make_user(db, role="admin", username="enc_admin", password="AdminPass1")
+    make_user(db, role="admin", username="enc_admin", password="AdminPass1")
     db.commit()
     r = client.post(
         "/api/v1/auth/login",

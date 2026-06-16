@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.user import UserRole
-
 from tests.conftest import (
     auth_header,
     make_program_with_buckets,
