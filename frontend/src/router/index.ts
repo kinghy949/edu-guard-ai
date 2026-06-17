@@ -16,6 +16,7 @@ const routes: RouteRecordRaw[] = [
       { path: '', redirect: () => undefined as never },  // 由守卫决定
       { path: 'dashboard', component: () => import('../views/Dashboard.vue') },
       { path: 'workbench', component: () => import('../views/CounselorDashboard.vue'), meta: { staff: true } },
+      { path: 'students', component: () => import('../views/Students.vue'), meta: { staff: true } },
       { path: 'warnings', component: () => import('../views/Warnings.vue') },
       { path: 'chat', component: () => import('../views/Chat.vue') },
       { path: 'admin', component: () => import('../views/Admin.vue'), meta: { staff: true } },

@@ -1,13 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import case, func, or_, select
 
 from app.api.deps import CurrentUser, DbSession, require_staff
 from app.api.v1._helpers import apply_updates, get_or_404
+from app.models.snapshot import StudentProgressSnapshot
 from app.models.student import Student
 from app.models.user import User, UserRole
-from app.schemas.student import StudentCreate, StudentRead, StudentUpdate
+from app.models.warning import Warning, WarningStatus
+from app.schemas.student import (
+    StudentCreate,
+    StudentListItem,
+    StudentListPage,
+    StudentRead,
+    StudentUpdate,
+)
 
 router = APIRouter()
+
+_LEVEL_RANK = {"info": 1, "warn": 2, "severe": 3}
 
 
 def _ensure_can_read(current: User, student: Student) -> None:
@@ -18,23 +28,113 @@ def _ensure_can_read(current: User, student: Student) -> None:
     raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该学生")
 
 
-@router.get("", response_model=list[StudentRead], dependencies=[Depends(require_staff)])
+@router.get("", response_model=StudentListPage, dependencies=[Depends(require_staff)])
 def list_students(
     db: DbSession,
-    skip: int = 0,
-    limit: int = 100,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=200),
+    keyword: str | None = Query(None, description="学号 / 姓名 模糊"),
     college: str | None = None,
     major: str | None = None,
+    class_name: str | None = None,
     enroll_year: int | None = None,
+    has_open_warning: bool | None = None,
+    warning_level: str | None = None,
+    completion_lt: float | None = None,
+    sort: str = Query("student_no", pattern="^(student_no|completion_asc|completion_desc)$"),
 ):
-    stmt = select(Student)
-    if college:
-        stmt = stmt.where(Student.college == college)
-    if major:
-        stmt = stmt.where(Student.major == major)
-    if enroll_year:
-        stmt = stmt.where(Student.enroll_year == enroll_year)
-    return db.scalars(stmt.offset(skip).limit(limit)).all()
+    # 子查询：每个学生最高未处理预警级别（数字 rank）
+    open_status = (WarningStatus.OPEN, WarningStatus.FOLLOWING)
+    rank_case = case(
+        (Warning.level == "severe", 3),
+        (Warning.level == "warn", 2),
+        (Warning.level == "info", 1),
+        else_=0,
+    )
+    open_w = (
+        select(
+            Warning.student_id.label("sid"),
+            func.max(rank_case).label("max_rank"),
+        )
+        .where(Warning.status.in_(open_status))
+        .group_by(Warning.student_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(Student, StudentProgressSnapshot.completion_ratio, open_w.c.max_rank)
+        .outerjoin(StudentProgressSnapshot, StudentProgressSnapshot.student_id == Student.id)
+        .outerjoin(open_w, open_w.c.sid == Student.id)
+    )
+    count_stmt = select(func.count(Student.id))
+
+    def _apply_filters(s):
+        if college:
+            s = s.where(Student.college == college)
+        if major:
+            s = s.where(Student.major == major)
+        if class_name:
+            s = s.where(Student.class_name == class_name)
+        if enroll_year is not None:
+            s = s.where(Student.enroll_year == enroll_year)
+        if keyword:
+            kw = f"%{keyword}%"
+            s = s.where(or_(Student.student_no.ilike(kw), Student.name.ilike(kw)))
+        return s
+
+    stmt = _apply_filters(stmt)
+    count_stmt = _apply_filters(count_stmt)
+
+    if has_open_warning is True:
+        stmt = stmt.where(open_w.c.max_rank.is_not(None))
+        count_stmt = count_stmt.where(
+            Student.id.in_(select(open_w.c.sid))
+        )
+    elif has_open_warning is False:
+        stmt = stmt.where(open_w.c.max_rank.is_(None))
+        count_stmt = count_stmt.where(
+            ~Student.id.in_(select(open_w.c.sid))
+        )
+
+    if warning_level:
+        target_rank = _LEVEL_RANK.get(warning_level, 0)
+        stmt = stmt.where(open_w.c.max_rank >= target_rank)
+        count_stmt = count_stmt.where(
+            Student.id.in_(
+                select(Warning.student_id)
+                .where(Warning.status.in_(open_status), Warning.level == warning_level)
+            )
+        )
+
+    if completion_lt is not None:
+        stmt = stmt.where(StudentProgressSnapshot.completion_ratio < completion_lt)
+        count_stmt = count_stmt.where(
+            Student.id.in_(
+                select(StudentProgressSnapshot.student_id)
+                .where(StudentProgressSnapshot.completion_ratio < completion_lt)
+            )
+        )
+
+    if sort == "completion_asc":
+        stmt = stmt.order_by(StudentProgressSnapshot.completion_ratio.asc().nullslast())
+    elif sort == "completion_desc":
+        stmt = stmt.order_by(StudentProgressSnapshot.completion_ratio.desc().nullslast())
+    else:
+        stmt = stmt.order_by(Student.student_no.asc())
+
+    stmt = stmt.offset((page - 1) * size).limit(size)
+    rows = db.execute(stmt).all()
+    total = db.scalar(count_stmt) or 0
+
+    items: list[StudentListItem] = []
+    rank_to_level = {3: "severe", 2: "warn", 1: "info"}
+    for student, completion, max_rank in rows:
+        item_data = StudentListItem.model_validate(student, from_attributes=True).model_dump()
+        item_data["completion_ratio"] = float(completion) if completion is not None else None
+        item_data["open_warning_level"] = rank_to_level.get(int(max_rank)) if max_rank else None
+        items.append(StudentListItem.model_validate(item_data))
+
+    return StudentListPage(items=items, total=int(total))
 
 
 @router.post("", response_model=StudentRead, dependencies=[Depends(require_staff)])

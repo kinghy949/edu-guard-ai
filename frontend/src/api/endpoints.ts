@@ -305,6 +305,34 @@ export interface WarningTrendRow {
   severe: number
 }
 
+export interface StudentRead {
+  id: number
+  user_id: number
+  student_no: string
+  name: string
+  gender: string | null
+  enroll_year: number
+  college: string
+  major: string
+  class_name: string | null
+  program_id: number | null
+}
+
+export interface StudentListItem extends StudentRead {
+  completion_ratio: number | null
+  open_warning_level: 'info' | 'warn' | 'severe' | null
+}
+
+export const studentsApi = {
+  list: (params?: {
+    page?: number; size?: number; keyword?: string;
+    college?: string; major?: string; class_name?: string; enroll_year?: number;
+    has_open_warning?: boolean; warning_level?: string;
+    completion_lt?: number; sort?: 'student_no' | 'completion_asc' | 'completion_desc';
+  }) => http.get<{ items: StudentListItem[]; total: number }>('/students', { params }).then((r) => r.data),
+  get: (id: number) => http.get<StudentRead>(`/students/${id}`).then((r) => r.data),
+}
+
 export const statsApi = {
   overview: (college?: string) =>
     http.get<StatsOverview>('/stats/overview', { params: college ? { college } : undefined }).then((r) => r.data),

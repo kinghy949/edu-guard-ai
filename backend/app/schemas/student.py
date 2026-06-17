@@ -32,3 +32,14 @@ class StudentRead(TimestampRead):
     major: str
     class_name: str | None
     program_id: int | None
+
+
+class StudentListItem(StudentRead):
+    """学生列表展示项：附完成度（来自快照）与最高未处理预警级别。"""
+    completion_ratio: float | None = None
+    open_warning_level: str | None = None
+
+
+class StudentListPage(ORMBase):
+    items: list[StudentListItem]
+    total: int
