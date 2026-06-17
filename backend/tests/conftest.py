@@ -80,6 +80,21 @@ def _reset_login_rate_limit():
     reset_login_rate_limit()
 
 
+@pytest.fixture(autouse=True)
+def _patch_session_local(engine: Engine, monkeypatch):
+    """让 SessionLocal 指向测试 engine，使得 APScheduler / run_with_lock 等
+    通过 SessionLocal 创建的独立 session 也落到 eduguard_test 库。"""
+    from app.core import db as core_db
+
+    test_sessionmaker = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    monkeypatch.setattr(core_db, "SessionLocal", test_sessionmaker)
+    # 同时打 scheduler 模块内的引用（已 import 过的不会刷新）
+    import app.core.scheduler as sched
+
+    monkeypatch.setattr(sched, "SessionLocal", test_sessionmaker)
+    yield
+
+
 @pytest.fixture
 def client(db: Session) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:

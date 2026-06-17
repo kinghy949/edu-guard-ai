@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin_settings,
     audit,
     auth,
     chat,
@@ -39,3 +40,4 @@ router.include_router(chat.router, prefix="/chat", tags=["chat"])
 router.include_router(llm_config.router, prefix="/admin/llm-config", tags=["llm-config"])
 router.include_router(audit.router, prefix="/admin", tags=["audit"])
 router.include_router(warning_rules.router, prefix="/admin/warning-rules", tags=["warning-rules"])
+router.include_router(admin_settings.router, prefix="/admin", tags=["admin-settings"])

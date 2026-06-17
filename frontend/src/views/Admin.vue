@@ -191,6 +191,60 @@
         </el-form>
         <el-alert v-if="genResult" :title="JSON.stringify(genResult)" type="success" style="margin-top: 12px" :closable="false" />
       </el-card>
+
+      <el-card v-if="user.isAdmin" style="margin-top: 16px">
+        <template #header>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span>定时自动预警</span>
+            <el-button size="small" @click="loadJobRuns">刷新运行记录</el-button>
+          </div>
+        </template>
+        <el-form :model="schedule" label-width="100px">
+          <el-form-item label="启用">
+            <el-switch v-model="schedule.enabled" />
+          </el-form-item>
+          <el-form-item label="cron">
+            <el-input v-model="schedule.cron" placeholder="如 0 3 * * 1（每周一 3:00）" />
+            <div style="color:#94a3b8;font-size:12px;margin-top:4px">五段：分 时 日 月 周</div>
+          </el-form-item>
+          <el-form-item label="学院">
+            <el-input v-model="scheduleScopeCollege" />
+          </el-form-item>
+          <el-form-item label="专业">
+            <el-input v-model="scheduleScopeMajor" />
+          </el-form-item>
+          <el-form-item label="自动派发通知">
+            <el-switch v-model="schedule.auto_dispatch" />
+          </el-form-item>
+          <el-form-item label="渠道" v-if="schedule.auto_dispatch">
+            <el-checkbox-group v-model="schedule.channels">
+              <el-checkbox label="inbox">站内</el-checkbox>
+              <el-checkbox label="email">邮件</el-checkbox>
+              <el-checkbox label="wecom">企微</el-checkbox>
+              <el-checkbox label="dingtalk">钉钉</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+          <el-button type="primary" @click="saveSchedule">保存</el-button>
+          <el-button @click="runScheduleNow">立即运行一次</el-button>
+        </el-form>
+
+        <h4 style="margin-top: 16px">最近运行记录</h4>
+        <el-table :data="jobRuns" border>
+          <el-table-column prop="started_at" label="开始时间" width="200" />
+          <el-table-column prop="job_name" label="任务" width="200" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'info'">{{ row.status }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="结果">
+            <template #default="{ row }">
+              <pre style="margin:0;font-size:12px">{{ JSON.stringify(row.result, null, 2) }}</pre>
+            </template>
+          </el-table-column>
+          <el-table-column prop="error" label="错误" width="200" />
+        </el-table>
+      </el-card>
     </el-tab-pane>
 
     <!-- AI 模型配置 -->
@@ -371,14 +425,15 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import {
   type AuditLog, auditApi,
   type ImportBatchDetail, type ImportBatchSummary,
   type ImportMapping, importMappingsApi,
-  importsApi, llmConfigApi, notificationsApi, warningsApi,
-  type WarningRule, warningRulesApi,
+  importsApi, type JobRun, llmConfigApi, notificationsApi,
+  schedulerApi, warningsApi, type WarningRule, warningRulesApi,
+  type WarningSchedule,
 } from '../api/endpoints'
 import { useUserStore } from '../stores/user'
 
@@ -624,6 +679,38 @@ async function testLLM() {
   }
 }
 
+// 定时预警
+const schedule = reactive<WarningSchedule>({
+  enabled: false, cron: '0 3 * * 1', scope: {}, auto_dispatch: false, channels: ['inbox'],
+})
+const scheduleScopeCollege = computed({
+  get: () => schedule.scope.college ?? '',
+  set: (v: string) => { if (v) schedule.scope.college = v; else delete schedule.scope.college },
+})
+const scheduleScopeMajor = computed({
+  get: () => schedule.scope.major ?? '',
+  set: (v: string) => { if (v) schedule.scope.major = v; else delete schedule.scope.major },
+})
+const jobRuns = ref<JobRun[]>([])
+
+async function loadSchedule() {
+  if (!user.isAdmin) return
+  Object.assign(schedule, await schedulerApi.getWarningSchedule())
+}
+async function loadJobRuns() {
+  if (!user.isAdmin) return
+  jobRuns.value = await schedulerApi.jobRuns({ limit: 20 })
+}
+async function saveSchedule() {
+  await schedulerApi.putWarningSchedule({ ...schedule })
+  ElMessage.success('已保存')
+}
+async function runScheduleNow() {
+  const r = await schedulerApi.runWarningsNow()
+  ElMessage.success(`任务 ${r.status}`)
+  loadJobRuns()
+}
+
 // 预警规则
 const rules = ref<WarningRule[]>([])
 const ruleFormVisible = ref(false)
@@ -732,6 +819,8 @@ onMounted(() => {
   loadLLM()
   loadAudit()
   loadRules()
+  loadSchedule()
+  loadJobRuns()
 })
 </script>
 

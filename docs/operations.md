@@ -250,3 +250,20 @@ docker compose -f docker-compose.prod.yml up -d
 - 成绩：按 `学生 × 课程 × 学期` upsert
 
 模板列名可调 `GET /api/v1/imports/templates` 查看。
+
+---
+
+## 七、单 worker 约束（重要）
+
+定时任务使用进程内 APScheduler 调度，登录限流使用进程内计数器。
+**生产部署必须保持 uvicorn 单 worker**，否则会出现：
+
+- 同一定时任务被重复触发（advisory lock 是双保险，仍建议遵守）
+- IP 登录限流统计偏差
+
+```bash
+# Dockerfile / compose 启动命令保持
+uvicorn app.main:app --host 0.0.0.0 --port 8000   # 默认单 worker
+```
+
+如需水平扩展，请改用外部调度（如 cron + 调 /admin/jobs/.../run-now）。

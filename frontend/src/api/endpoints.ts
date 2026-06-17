@@ -220,6 +220,34 @@ export interface ImportMapping {
   updated_at: string
 }
 
+export interface WarningSchedule {
+  enabled: boolean
+  cron: string
+  scope: { college?: string; major?: string; enroll_year?: number; semester?: string }
+  auto_dispatch: boolean
+  channels: string[]
+}
+
+export interface JobRun {
+  id: number
+  job_name: string
+  status: string
+  started_at: string
+  finished_at: string | null
+  result: Record<string, unknown> | null
+  error: string | null
+}
+
+export const schedulerApi = {
+  getWarningSchedule: () => http.get<WarningSchedule>('/admin/settings/warning-schedule').then((r) => r.data),
+  putWarningSchedule: (payload: WarningSchedule) =>
+    http.put<WarningSchedule>('/admin/settings/warning-schedule', payload).then((r) => r.data),
+  jobRuns: (params?: { job_name?: string; limit?: number }) =>
+    http.get<JobRun[]>('/admin/job-runs', { params }).then((r) => r.data),
+  runWarningsNow: () =>
+    http.post<{ status: string; result?: Record<string, unknown> }>('/admin/jobs/generate-warnings/run-now').then((r) => r.data),
+}
+
 export interface WarningRule {
   id: number
   name: string

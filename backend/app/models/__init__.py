@@ -8,6 +8,7 @@ from app.models.llm_config import LLMConfig
 from app.models.notification import Notification, NotificationConfig
 from app.models.program import CreditBucket, Program, ProgramCourse
 from app.models.student import Student
+from app.models.system import JobRun, SystemSetting
 from app.models.user import User
 from app.models.warning import Warning, WarningAction
 from app.models.warning_rule import WarningRuleORM
@@ -32,4 +33,6 @@ __all__ = [
     "ImportMapping",
     "WarningRuleORM",
     "WarningAction",
+    "SystemSetting",
+    "JobRun",
 ]
