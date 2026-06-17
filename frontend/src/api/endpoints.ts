@@ -323,6 +323,20 @@ export interface StudentListItem extends StudentRead {
   open_warning_level: 'info' | 'warn' | 'severe' | null
 }
 
+export interface TranscriptCourse {
+  code: string
+  name: string
+  credits: string
+  credits_earned: string
+  score: string | null
+  status: string
+  semester: string
+}
+export interface TranscriptSemester {
+  semester: string
+  courses: TranscriptCourse[]
+}
+
 export const studentsApi = {
   list: (params?: {
     page?: number; size?: number; keyword?: string;
@@ -331,6 +345,7 @@ export const studentsApi = {
     completion_lt?: number; sort?: 'student_no' | 'completion_asc' | 'completion_desc';
   }) => http.get<{ items: StudentListItem[]; total: number }>('/students', { params }).then((r) => r.data),
   get: (id: number) => http.get<StudentRead>(`/students/${id}`).then((r) => r.data),
+  transcript: (id: number) => http.get<TranscriptSemester[]>(`/students/${id}/transcript`).then((r) => r.data),
 }
 
 export const statsApi = {

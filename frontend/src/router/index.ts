@@ -17,6 +17,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'dashboard', component: () => import('../views/Dashboard.vue') },
       { path: 'workbench', component: () => import('../views/CounselorDashboard.vue'), meta: { staff: true } },
       { path: 'students', component: () => import('../views/Students.vue'), meta: { staff: true } },
+      { path: 'students/:id', component: () => import('../views/StudentDetail.vue'), meta: { staff: true } },
       { path: 'warnings', component: () => import('../views/Warnings.vue') },
       { path: 'chat', component: () => import('../views/Chat.vue') },
       { path: 'admin', component: () => import('../views/Admin.vue'), meta: { staff: true } },

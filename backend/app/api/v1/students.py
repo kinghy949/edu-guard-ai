@@ -3,6 +3,8 @@ from sqlalchemy import case, func, or_, select
 
 from app.api.deps import CurrentUser, DbSession, require_staff
 from app.api.v1._helpers import apply_updates, get_or_404
+from app.models.course import Course
+from app.models.grade import Grade
 from app.models.snapshot import StudentProgressSnapshot
 from app.models.student import Student
 from app.models.user import User, UserRole
@@ -180,3 +182,28 @@ def delete_student(student_id: int, db: DbSession):
     student = get_or_404(db, Student, student_id, "学生")
     db.delete(student)
     db.commit()
+
+
+@router.get("/{student_id}/transcript", summary="按学期分组的成绩单")
+def get_transcript(student_id: int, db: DbSession, current: CurrentUser):
+    student = get_or_404(db, Student, student_id, "学生")
+    _ensure_can_read(current, student)
+    rows = list(db.execute(
+        select(Grade, Course)
+        .join(Course, Course.id == Grade.course_id)
+        .where(Grade.student_id == student.id)
+        .order_by(Grade.semester, Course.code)
+    ))
+    by_semester: dict[str, list[dict]] = {}
+    for grade, course in rows:
+        by_semester.setdefault(grade.semester, []).append({
+            "code": course.code,
+            "name": course.name,
+            "credits": str(course.credits),
+            "credits_earned": str(grade.credits_earned),
+            "score": str(grade.score) if grade.score is not None else None,
+            "status": grade.status,
+            "semester": grade.semester,
+        })
+    semesters = sorted(by_semester.keys())
+    return [{"semester": s, "courses": by_semester[s]} for s in semesters]
