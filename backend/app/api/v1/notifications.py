@@ -69,6 +69,15 @@ def list_configs(db: DbSession):
 
 @router.put("/configs/{channel}", response_model=NotificationConfigRead, dependencies=[Depends(require_admin)])
 def upsert_config(channel: str, payload: NotificationConfigUpdate, db: DbSession, current: CurrentUser, request: Request):
+    from app.notifiers import REGISTRY
+
+    # 仅当 enabled=True 且提供了 config 时做强校验
+    if payload.enabled and payload.config is not None:
+        notifier = REGISTRY.get(channel)
+        if notifier and hasattr(notifier, "validate_config"):
+            errs = notifier.validate_config(payload.config)
+            if errs:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "；".join(errs))
     cfg = db.scalar(select(NotificationConfig).where(NotificationConfig.channel == channel))
     if not cfg:
         cfg = NotificationConfig(

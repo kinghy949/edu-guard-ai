@@ -22,7 +22,13 @@ PUT /api/v1/notifications/configs/{channel}
 | `email` | `host`, `port`, `user`, `password`, `from`, `use_ssl`(默认 true) |
 | `wecom` | `webhook` |
 | `dingtalk` | `webhook`, `secret`(可选加签) |
-| `sms` | `access_key_id`, `access_key_secret`, `sign_name`, `template_code` |
+| `sms` | `provider`(mock\|aliyun，默认 mock)；aliyun 时还需 `access_key_id`/`access_key_secret`/`sign_name`/`template_code`；可选 `template_param`(dict)、`endpoint` |
+
+### 配置校验
+
+`PUT /api/v1/notifications/configs/{channel}` 启用渠道时会调用对应
+notifier 的 `validate_config`，缺字段直接返回 400 并指明缺项；SMS
+provider=mock 时无需任何 access key。
 
 ## 触发方式
 
