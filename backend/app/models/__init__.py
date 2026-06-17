@@ -7,6 +7,7 @@ from app.models.import_mapping import ImportMapping
 from app.models.llm_config import LLMConfig
 from app.models.notification import Notification, NotificationConfig
 from app.models.program import CreditBucket, Program, ProgramCourse
+from app.models.snapshot import StudentProgressSnapshot
 from app.models.student import Student
 from app.models.system import JobRun, SystemSetting
 from app.models.user import User
@@ -35,4 +36,5 @@ __all__ = [
     "WarningAction",
     "SystemSetting",
     "JobRun",
+    "StudentProgressSnapshot",
 ]
