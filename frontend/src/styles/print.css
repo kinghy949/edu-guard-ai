@@ -1,0 +1,31 @@
+/* 打印视图样式：隐藏导航/侧边栏，按 A4 排版 */
+@media print {
+  .el-aside, .el-header, .no-print {
+    display: none !important;
+  }
+  .el-main {
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .print-page {
+    margin: 0;
+    padding: 16mm 12mm;
+    font-size: 12pt;
+    color: #000;
+  }
+  table {
+    page-break-inside: auto;
+  }
+  tr, td, th {
+    page-break-inside: avoid;
+  }
+  .el-table {
+    --el-table-border-color: #444;
+  }
+  thead {
+    display: table-header-group;
+  }
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+}

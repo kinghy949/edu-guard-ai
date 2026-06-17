@@ -12,6 +12,7 @@ from app.api.v1 import (
     notifications,
     programs,
     progress,
+    reports,
     stats,
     students,
     users,
@@ -38,6 +39,7 @@ router.include_router(progress.router, prefix="/progress", tags=["progress"])
 router.include_router(warnings.router, prefix="/warnings", tags=["warnings"])
 router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 router.include_router(stats.router, prefix="/stats", tags=["stats"])
+router.include_router(reports.router, prefix="/reports", tags=["reports"])
 router.include_router(chat.router, prefix="/chat", tags=["chat"])
 router.include_router(llm_config.router, prefix="/admin/llm-config", tags=["llm-config"])
 router.include_router(audit.router, prefix="/admin", tags=["audit"])

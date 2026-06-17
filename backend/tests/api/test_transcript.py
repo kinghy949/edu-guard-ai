@@ -4,8 +4,12 @@ from decimal import Decimal
 
 from app.models.grade import GradeStatus
 from tests.conftest import (
-    auth_header, make_course, make_grade, make_program_with_buckets,
-    make_student, make_user,
+    auth_header,
+    make_course,
+    make_grade,
+    make_program_with_buckets,
+    make_student,
+    make_user,
 )
 
 

@@ -348,6 +348,30 @@ export const studentsApi = {
   transcript: (id: number) => http.get<TranscriptSemester[]>(`/students/${id}/transcript`).then((r) => r.data),
 }
 
+export const reportsApi = {
+  warningsUrl: (params: Record<string, string | number | undefined>) =>
+    `/api/v1/reports/warnings.xlsx?${new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '' && v !== undefined) as [string, string][],
+    )}`,
+  completionUrl: (params: Record<string, string | number | undefined>) =>
+    `/api/v1/reports/completion.xlsx?${new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '' && v !== undefined) as [string, string][],
+    )}`,
+  classSummaryUrl: (params: Record<string, string | number | undefined>) =>
+    `/api/v1/reports/class-summary.xlsx?${new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '' && v !== undefined) as [string, string][],
+    )}`,
+  download: async (url: string, filename: string) => {
+    const r = await http.get(url.replace('/api/v1', ''), { responseType: 'blob' })
+    const blob = new Blob([r.data])
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(link.href)
+  },
+}
+
 export const statsApi = {
   overview: (college?: string) =>
     http.get<StatsOverview>('/stats/overview', { params: college ? { college } : undefined }).then((r) => r.data),

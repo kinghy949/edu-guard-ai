@@ -9,6 +9,9 @@
         <el-menu-item v-if="user.isStaff" index="/students">
           <el-icon><User /></el-icon><span>学生管理</span>
         </el-menu-item>
+        <el-menu-item v-if="user.isStaff" index="/reports">
+          <el-icon><Document /></el-icon><span>报表中心</span>
+        </el-menu-item>
         <el-menu-item v-if="!user.isStaff" index="/dashboard">
           <el-icon><Histogram /></el-icon><span>学业完成度</span>
         </el-menu-item>
@@ -47,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { BellFilled, ChatLineRound, DataAnalysis, Histogram, Tools, User } from '@element-plus/icons-vue'
+import { BellFilled, ChatLineRound, DataAnalysis, Document, Histogram, Tools, User } from '@element-plus/icons-vue'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -60,6 +63,7 @@ const user = useUserStore()
 const TITLES: Record<string, string> = {
   '/workbench': '辅导员工作台',
   '/students': '学生管理',
+  '/reports': '报表中心',
   '/dashboard': '学业完成度',
   '/warnings': '预警',
   '/chat': 'AI 学业问答',
