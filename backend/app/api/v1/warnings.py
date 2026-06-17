@@ -101,16 +101,17 @@ def generate(payload: GenerateRequest, db: DbSession, current: CurrentUser, requ
         auto_dispatch=bool(payload.auto_dispatch),
     )
     if payload.auto_dispatch:
-        dispatched = sent = failed = 0
+        dispatched = queued = sent = failed = 0
         for w in db.scalars(select(Warning).where(
             Warning.semester == result["semester"],
             Warning.student_id.in_([s.id for s in students]),
         )):
             s = dispatch_warning(db, w, channels=payload.channels)
             dispatched += 1
-            sent += s.succeeded
+            queued += s.queued
+            sent += s.sent
             failed += s.failed
-        result["dispatched"] = {"warnings": dispatched, "succeeded": sent, "failed": failed}
+        result["dispatched"] = {"warnings": dispatched, "queued": queued, "sent": sent, "failed": failed}
     record_audit(
         db, user=current, action="warnings.generate",
         detail={

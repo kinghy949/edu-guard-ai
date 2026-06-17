@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession, require_admin, require_staff
 from app.api.v1._helpers import apply_updates, get_or_404
-from app.models.notification import Notification, NotificationConfig
+from app.models.notification import Notification, NotificationConfig, NotificationStatus
 from app.models.user import UserRole
 from app.models.warning import Warning
 from app.schemas.notification import (
@@ -124,8 +124,23 @@ class DispatchWarningRequest(BaseModel):
     channels: list[str] | None = None
 
 
-@router.post("/warnings/{warning_id}/dispatch", dependencies=[Depends(require_staff)], summary="为某条预警发送通知")
+@router.post("/warnings/{warning_id}/dispatch", dependencies=[Depends(require_staff)], summary="为某条预警入队通知")
 def dispatch_for_warning(warning_id: int, payload: DispatchWarningRequest, db: DbSession):
     w = get_or_404(db, Warning, warning_id, "预警")
     summary = dispatch_warning(db, w, channels=payload.channels)
-    return summary.__dict__
+    return {"queued": summary.queued, "sent": summary.sent, "failed": summary.failed,
+            "notification_ids": summary.notification_ids}
+
+
+@router.post("/{notification_id}/resend", dependencies=[Depends(require_staff)], summary="重置失败/任意通知到队列重发")
+def resend(notification_id: int, db: DbSession):
+    from datetime import datetime, timezone
+
+    n = get_or_404(db, Notification, notification_id, "通知")
+    n.status = NotificationStatus.PENDING
+    n.retry_count = 0
+    n.next_attempt_at = datetime.now(timezone.utc)
+    n.error = None
+    db.commit()
+    db.refresh(n)
+    return {"ok": True, "id": n.id, "status": n.status}

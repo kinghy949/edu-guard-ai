@@ -21,11 +21,13 @@ async def lifespan(_app: FastAPI):
     # 启动调度器；若已有定时预警配置且启用，则根据 cron 注册
     sched = start_scheduler()
     try:
+        from apscheduler.triggers.interval import IntervalTrigger
+
         from app.api.v1.admin_settings import WarningScheduleConfig, _parse_cron
         from app.core.db import SessionLocal
         from app.core.scheduler import run_with_lock
         from app.models.system import SystemSetting
-        from app.services.jobs import SETTING_KEY, job_generate_warnings
+        from app.services.jobs import SETTING_KEY, job_deliver_notifications, job_generate_warnings
 
         with SessionLocal() as db:
             row = db.get(SystemSetting, SETTING_KEY)
@@ -36,6 +38,12 @@ async def lifespan(_app: FastAPI):
                     trigger=_parse_cron(cfg.cron),
                     id="warning_schedule", replace_existing=True,
                 )
+        # 通知 outbox 消费：每 30 秒一次
+        sched.add_job(
+            func=lambda: run_with_lock("notify_deliver", job_deliver_notifications),
+            trigger=IntervalTrigger(seconds=30),
+            id="notify_deliver", replace_existing=True,
+        )
         yield
     finally:
         shutdown_scheduler()

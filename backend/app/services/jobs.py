@@ -10,7 +10,7 @@ from app.core.logging import get_logger
 from app.models.student import Student
 from app.models.system import SystemSetting
 from app.models.warning import Warning
-from app.services.notify_dispatcher import dispatch_warning
+from app.services.notify_dispatcher import deliver_pending, dispatch_warning
 from app.services.warning_engine import generate_batch
 
 log = get_logger("jobs")
@@ -62,7 +62,7 @@ def job_generate_warnings(db: Session) -> dict[str, Any]:
 
     result = generate_batch(db, students, semester=scope.get("semester"))
 
-    dispatched = sent = failed = 0
+    dispatched = queued = sent = failed = 0
     if cfg.get("auto_dispatch"):
         for w in db.scalars(select(Warning).where(
             Warning.semester == result["semester"],
@@ -70,8 +70,14 @@ def job_generate_warnings(db: Session) -> dict[str, Any]:
         )):
             s = dispatch_warning(db, w, channels=cfg.get("channels"))
             dispatched += 1
-            sent += s.succeeded
+            queued += s.queued
+            sent += s.sent
             failed += s.failed
-        result["dispatched"] = {"warnings": dispatched, "succeeded": sent, "failed": failed}
+        result["dispatched"] = {"warnings": dispatched, "queued": queued, "sent": sent, "failed": failed}
 
     return result
+
+
+def job_deliver_notifications(db: Session) -> dict[str, int]:
+    """outbox 消费 job：取 pending 通知逐条发送，失败按指数退避。"""
+    return deliver_pending(db)

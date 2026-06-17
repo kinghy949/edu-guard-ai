@@ -13,6 +13,11 @@ class NotificationRead(TimestampRead):
     sent_at: datetime | None
     error: str | None
     payload: dict[str, Any] | None
+    subject: str | None = None
+    content: str | None = None
+    retry_count: int = 0
+    next_attempt_at: datetime | None = None
+    read_at: datetime | None = None
 
 
 class NotificationConfigRead(TimestampRead):
