@@ -43,7 +43,8 @@ async function submit() {
       router.push('/change-password')
       return
     }
-    const redirect = (route.query.redirect as string) || '/dashboard'
+    const fallback = user.isStaff ? '/workbench' : '/dashboard'
+    const redirect = (route.query.redirect as string) || fallback
     router.push(redirect)
   } finally {
     loading.value = false

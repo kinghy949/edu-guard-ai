@@ -3,6 +3,9 @@
     <el-aside width="220px" class="aside">
       <div class="logo">基于AI的智能学业预警系统</div>
       <el-menu :default-active="route.path" router :collapse="false" background-color="#1f2937" text-color="#cbd5e1" active-text-color="#60a5fa">
+        <el-menu-item v-if="user.isStaff" index="/workbench">
+          <el-icon><DataAnalysis /></el-icon><span>工作台</span>
+        </el-menu-item>
         <el-menu-item index="/dashboard">
           <el-icon><Histogram /></el-icon><span>学业完成度</span>
         </el-menu-item>
@@ -41,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { BellFilled, ChatLineRound, Histogram, Tools } from '@element-plus/icons-vue'
+import { BellFilled, ChatLineRound, DataAnalysis, Histogram, Tools } from '@element-plus/icons-vue'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -52,6 +55,7 @@ const router = useRouter()
 const user = useUserStore()
 
 const TITLES: Record<string, string> = {
+  '/workbench': '辅导员工作台',
   '/dashboard': '学业完成度',
   '/warnings': '预警',
   '/chat': 'AI 学业问答',

@@ -275,6 +275,49 @@ export const warningRulesApi = {
   delete: (id: number) => http.delete(`/admin/warning-rules/${id}`).then((r) => r.data),
 }
 
+export interface StatsOverview {
+  students_total: number
+  warnings_open: { info: number; warn: number; severe: number }
+  warnings_resolved_ratio: number
+  avg_completion_ratio: number
+  failed_students: number
+}
+
+export interface ClassRankingRow {
+  class_name: string
+  students: number
+  avg_completion_ratio: number
+  open_warnings: number
+  severe_warnings: number
+}
+
+export interface DistributionRow {
+  key: string
+  info: number
+  warn: number
+  severe: number
+}
+
+export interface WarningTrendRow {
+  semester: string
+  info: number
+  warn: number
+  severe: number
+}
+
+export const statsApi = {
+  overview: (college?: string) =>
+    http.get<StatsOverview>('/stats/overview', { params: college ? { college } : undefined }).then((r) => r.data),
+  warningTrend: (semesters = 6) =>
+    http.get<WarningTrendRow[]>('/stats/warning-trend', { params: { semesters } }).then((r) => r.data),
+  classRanking: (params?: { college?: string; enroll_year?: number }) =>
+    http.get<ClassRankingRow[]>('/stats/class-ranking', { params }).then((r) => r.data),
+  distribution: (dim: 'college' | 'major' | 'class_name' = 'college') =>
+    http.get<DistributionRow[]>('/stats/distribution', { params: { dim } }).then((r) => r.data),
+  refreshSnapshots: () =>
+    http.post<{ refreshed: number }>('/stats/refresh-snapshots').then((r) => r.data),
+}
+
 export const importMappingsApi = {
   list: (kind?: string) =>
     http.get<ImportMapping[]>('/imports/mappings', { params: kind ? { kind } : undefined }).then((r) => r.data),

@@ -13,8 +13,9 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     component: () => import('../views/Layout.vue'),
     children: [
-      { path: '', redirect: '/dashboard' },
+      { path: '', redirect: () => undefined as never },  // 由守卫决定
       { path: 'dashboard', component: () => import('../views/Dashboard.vue') },
+      { path: 'workbench', component: () => import('../views/CounselorDashboard.vue'), meta: { staff: true } },
       { path: 'warnings', component: () => import('../views/Warnings.vue') },
       { path: 'chat', component: () => import('../views/Chat.vue') },
       { path: 'admin', component: () => import('../views/Admin.vue'), meta: { staff: true } },
@@ -38,6 +39,10 @@ router.beforeEach(async (to) => {
     return { path: '/change-password' }
   }
   if (to.meta.staff && !store.isStaff) return { path: '/dashboard' }
+  // 根路径根据角色分流
+  if (to.path === '/') {
+    return { path: store.isStaff ? '/workbench' : '/dashboard' }
+  }
   return true
 })
 
