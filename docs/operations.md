@@ -337,3 +337,67 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000   # 默认单 worker
 ```
 
 如需水平扩展，请改用外部调度（如 cron + 调 /admin/jobs/.../run-now）。
+
+---
+
+## 九、升级、回滚与故障排查
+
+### 9.1 标准升级
+
+```bash
+scripts/db_backup.sh
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
+curl -fsS http://127.0.0.1/health
+```
+
+后端容器启动时会自动执行 `alembic upgrade head`。升级后检查：
+
+- `docker compose -f docker-compose.prod.yml logs --tail=200 backend` 无迁移或启动错误。
+- `/health` 返回 `{"status":"ok","db":"ok"}`。
+- 管理后台能正常打开，学生端能进入学业地图和消息中心。
+
+### 9.2 回滚
+
+代码回滚：
+
+```bash
+docker compose -f docker-compose.prod.yml stop backend frontend
+git checkout <上一稳定提交或 tag>
+docker compose -f docker-compose.prod.yml up -d --build backend frontend
+```
+
+数据回滚到备份时点：
+
+```bash
+docker compose -f docker-compose.prod.yml stop backend frontend
+scripts/db_restore.sh backups/eduguard_YYYYmmdd_HHMM.dump
+docker compose -f docker-compose.prod.yml up -d backend frontend
+```
+
+### 9.3 故障排查
+
+按“用户反馈 → request_id → 审计/任务/通知记录 → 后端日志”的顺序定位。
+
+1. 让用户提供页面报错时间，或从浏览器 Network 面板复制响应头 `X-Request-ID`。
+2. 查后端日志：
+
+   ```bash
+   docker compose -f docker-compose.prod.yml logs backend | grep '<request_id>'
+   ```
+
+3. 导入、改密、预警处理、报表导出等关键操作查 **管理后台 → 审计日志**，或查 `audit_logs` 表确认操作者、动作、资源 ID。
+4. 定时任务异常查 **管理后台 → 批量预警 → 最近运行记录**，或查 `job_runs` 表中的 `status/result/error`。
+5. 通知未送达查 `notifications` 表：`status`、`retry_count`、`next_attempt_at`、`error`；手动重发用通知 API 或后台对应操作。
+6. AI 问答失败先查 LLM 配置是否启用、API Key 是否被误填为掩码值，再按 request_id 查后端日志中的 LLM 调用错误。
+
+常见现象：
+
+| 现象 | 优先检查 |
+| --- | --- |
+| `/health` 503 | PostgreSQL 容器状态、`DATABASE_URL`、db healthcheck |
+| 登录频繁 429/423 | IP 限流、账号失败次数、`locked_until` |
+| 定时任务不运行 | 单 worker 约束、`system_settings.warning_schedule`、`job_runs` |
+| 消息中心无站内信 | 通知渠道是否启用 inbox、预警生成是否选择 `channels=["inbox"]` |
+| Excel 导出为空 | 筛选条件、快照是否刷新、当前账号是否 staff |

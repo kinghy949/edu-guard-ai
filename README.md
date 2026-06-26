@@ -25,6 +25,10 @@
 - 🚨 **分阶段预警**：在每学期末按完成度生成 `提示 / 警告 / 严重` 三档预警。
 - 🔔 **多渠道通知**：站内消息、邮件、企业微信/钉钉机器人、短信，**可在后台自由配置切换**。
 - 🤖 **AI 学业问答**：学生可对话式询问"我还差什么没修？""下学期建议选什么？"，基于个人上下文 + 培养方案进行回答。
+- 🧑‍🏫 **辅导员工作台**：统计大盘、学生高级筛选、学生 360 详情、预警跟进流。
+- 🗺️ **学生端体验**：学业地图、消息中心、AI 对话额度与免责声明。
+- 🛡️ **试点安全基线**：密码策略、登录锁定、敏感配置加密、结构化日志、审计日志、CORS 白名单。
+- 🧰 **运维交付**：APScheduler 定时任务、通知 Outbox、Excel 报表、健康检查、数据库备份/恢复脚本。
 - 👥 **多角色**：学生、辅导员/班主任、教学管理员，权限分级。
 
 ## 三、技术架构
@@ -130,15 +134,17 @@ npm run dev
 | M3 | 通知中心（邮件 / 企微 / 钉钉 / 短信） | ✅ |
 | M4 | AI 学业问答 | ✅ |
 | M5 | 前端页面 + 管理后台 + 部署文档 | ✅ |
+| M6 | 大学试点可落地增强（安全、审计、导入、报表、运维） | ✅ |
 
-详见 [`docs/roadmap.md`](docs/roadmap.md)、[`docs/deploy.md`](docs/deploy.md)。
+生产部署建议从 [`docs/deploy.md`](docs/deploy.md) 的首次上线 checklist 开始；日常维护见
+[`docs/operations.md`](docs/operations.md)。
 
 ## 七、文档
 
 - [架构说明](docs/architecture.md)
 - [数据模型](docs/data-model.md)
-- [操作手册](docs/operations.md) — 默认账号、AI 模型、通知渠道、运维命令
-- [部署指南](docs/deploy.md)
+- [操作手册](docs/operations.md) — 默认账号、AI 模型、通知渠道、备份恢复、故障排查
+- [部署指南](docs/deploy.md) — 环境变量、HTTPS、首次上线、升级回滚
 - [CentOS 公网部署实战](docs/centos-deploy.md) — 2C2G 服务器从 zip 上传到上线全流程
 - [批量导入模板](docs/import-templates.md)
 - [预警规则](docs/warning-rules.md)

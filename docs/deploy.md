@@ -16,9 +16,10 @@ cp backend/.env.example backend/.env
 # 编辑 backend/.env：
 #  - APP_ENV=prod            # 启动前会校验 SECRET_KEY 强度，弱密钥直接拒绝启动
 #  - SECRET_KEY=$(openssl rand -hex 32)  # 必须 ≥ 32 字符
+#  - ENCRYPTION_KEY=<Fernet key>         # 生产必填，用于加密 LLM/通知敏感配置
 #  - CORS_ORIGINS=https://eduguard.example.edu.cn   # 列出真实前端域名，禁止使用 *
 #  - DATABASE_URL=postgresql+psycopg://eduguard:<强密码>@db:5432/eduguard
-#  - LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
+#  - LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / CHAT_DAILY_MESSAGE_LIMIT
 
 docker compose -f docker-compose.prod.yml up -d --build
 # 国内服务器构建慢可加: PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple docker compose -f docker-compose.prod.yml build
@@ -120,22 +121,90 @@ curl -I https://eduguard.example.edu.cn
 CORS_ORIGINS=https://eduguard.example.edu.cn
 ```
 
+## 环境变量清单
+
+后端读取 `backend/.env`，生产请至少检查下表。完整样例见 `backend/.env.example`。
+
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `APP_NAME` | 否 | 应用名称，默认 `EduGuard-AI` |
+| `APP_ENV` | 是 | 生产设为 `prod`，会启用强密钥校验 |
+| `SECRET_KEY` | 是 | JWT 签名密钥，生产用 `openssl rand -hex 32` 生成 |
+| `ENCRYPTION_KEY` | 是 | Fernet 密钥，生产必须显式设置 |
+| `CORS_ORIGINS` | 是 | 前端 HTTPS 来源，逗号分隔或 JSON 数组 |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | 否 | 登录 token 有效期，默认 1440 |
+| `LOGIN_MAX_FAILED` | 否 | 账号锁定前允许失败次数 |
+| `LOGIN_LOCK_MINUTES` | 否 | 登录失败锁定分钟数 |
+| `LOGIN_IP_RATE_LIMIT` | 否 | 单 IP 每分钟登录请求上限，0 关闭 |
+| `DATABASE_URL` | 是 | PostgreSQL 连接串 |
+| `LLM_BASE_URL` | 是 | OpenAI 兼容 API 根地址 |
+| `LLM_API_KEY` | 否 | 可先留空，后续在管理后台配置 |
+| `LLM_MODEL` | 是 | 默认模型 |
+| `LLM_MAX_CONTEXT_TOKENS` | 否 | AI 上下文估算 token 上限 |
+| `CHAT_DAILY_MESSAGE_LIMIT` | 否 | 每用户每日 AI 消息上限，0 不限 |
+| `SMTP_ENABLED` / `WECOM_ENABLED` / `DINGTALK_ENABLED` / `SMS_ENABLED` | 否 | 兼容旧配置；实际渠道配置以管理后台 DB 配置为准 |
+
+密钥生成：
+
+```bash
+openssl rand -hex 32
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+前端构建时：`VITE_API_BASE` 默认 `/api/v1`，与 nginx 反代路径一致，通常无需改动。
+
+## 首次上线 checklist
+
+1. 修改 `backend/.env`：`APP_ENV=prod`、强 `SECRET_KEY`、显式 `ENCRYPTION_KEY`、真实 `CORS_ORIGINS`、强数据库密码、`SEED_DEMO=false`。
+2. `docker compose -f docker-compose.prod.yml up -d --build`，确认 `docker compose -f docker-compose.prod.yml ps` 中 db/backend/frontend 均 healthy/running。
+3. 登录管理员账号，立即修改默认密码。
+4. 管理后台配置 LLM 与通知渠道，使用“测试连通/测试发送”验证。
+5. 批量导入：字段映射模板 → dry-run 预检 → 下载错误报告修正 → 确认导入。
+6. 配置预警规则与定时自动预警，手动运行一次并检查 `job_runs`。
+7. 配置备份 crontab，执行一次 `scripts/db_backup.sh`，确认 `backups/` 下生成 dump。
+8. 用学生账号验证：学业地图、消息中心、AI 问答、预警详情均可访问。
+
 ## 备份
 
-- 数据库：`docker compose exec db pg_dump -U eduguard eduguard > backup.sql`
-- 卷：`pgdata` 命名卷，直接挂载到外部目录或者定时 `pg_dump` 上传对象存储
+```bash
+scripts/db_backup.sh
+```
+
+脚本生成 `backups/eduguard_YYYYmmdd_HHMM.dump`，默认保留最近 14 份。定时 crontab 与恢复演练步骤见
+[`docs/operations.md`](operations.md)。
 
 ## 升级
 
+升级前先备份：
+
 ```bash
+scripts/db_backup.sh
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
+curl -fsS http://127.0.0.1/health
 ```
 
-迁移自动随后端启动执行（`alembic upgrade head`）。
+迁移自动随后端启动执行（`alembic upgrade head`）。如启动失败，优先查看：
 
-## 环境变量速查
+```bash
+docker compose -f docker-compose.prod.yml logs -f backend
+```
 
-后端：见 `backend/.env.example`，主要是 `DATABASE_URL`、`SECRET_KEY`、`LLM_*`。
+## 回滚
 
-前端构建时：`VITE_API_BASE` 默认 `/api/v1`，与 nginx 反代路径一致，通常无需改动。
+若新版本发布后出现不可接受问题：
+
+```bash
+docker compose -f docker-compose.prod.yml stop backend frontend
+git checkout <上一稳定提交或 tag>
+docker compose -f docker-compose.prod.yml up -d --build backend frontend
+```
+
+若数据库迁移已经写入且需要回到备份时点：
+
+```bash
+docker compose -f docker-compose.prod.yml stop backend frontend
+scripts/db_restore.sh backups/eduguard_YYYYmmdd_HHMM.dump
+docker compose -f docker-compose.prod.yml up -d backend frontend
+```
