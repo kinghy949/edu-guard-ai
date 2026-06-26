@@ -2,9 +2,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
+from app import __version__
 from app.api.v1 import router as api_v1_router
 from app.core.config import ensure_production_safe, settings
+from app.core.db import SessionLocal
 from app.core.logging import setup_logging
 from app.core.rate_limit import LoginRateLimitMiddleware
 from app.core.request_logging import RequestLoggingMiddleware
@@ -49,7 +53,7 @@ async def lifespan(_app: FastAPI):
         shutdown_scheduler()
 
 
-app = FastAPI(title="EduGuard-AI", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="EduGuard-AI", version=__version__, lifespan=lifespan)
 
 # 中间件按"先注册后执行"顺序应用，CORS 应在最外层
 app.add_middleware(
@@ -69,4 +73,12 @@ app.include_router(api_v1_router, prefix="/api/v1")
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "version": __version__, "db": "error"},
+        )
+    return {"status": "ok", "version": __version__, "db": "ok"}

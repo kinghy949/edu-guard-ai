@@ -31,6 +31,7 @@
           <el-icon><Tools /></el-icon><span>管理后台</span>
         </el-menu-item>
       </el-menu>
+      <div class="version">v{{ appVersion }}</div>
     </el-aside>
     <el-container>
       <el-header class="header">
@@ -80,6 +81,7 @@ const route = useRoute()
 const router = useRouter()
 const user = useUserStore()
 const unreadCount = ref(0)
+const appVersion = __APP_VERSION__
 let unreadTimer: number | undefined
 
 const TITLES: Record<string, string> = {
@@ -129,9 +131,10 @@ onUnmounted(() => {
 
 <style scoped>
 .layout { height: 100vh; }
-.aside { background: #1f2937; color: #fff; }
+.aside { background: #1f2937; color: #fff; display: flex; flex-direction: column; }
 .logo { color: #fff; font-size: 15px; font-weight: 600; padding: 18px 16px; letter-spacing: 0.5px; line-height: 1.4; }
-:deep(.el-menu) { border-right: none; }
+:deep(.el-menu) { border-right: none; flex: 1; }
+.version { color: #94a3b8; font-size: 12px; padding: 10px 16px 14px; border-top: 1px solid rgba(148, 163, 184, 0.16); }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 14px; background: #fff; border-bottom: 1px solid #eee; }
 .title { font-size: 18px; font-weight: 600; }
 .bell { margin-left: auto; }

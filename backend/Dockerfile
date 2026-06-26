@@ -10,6 +10,10 @@ ENV PIP_TRUSTED_HOST=$PIP_TRUSTED_HOST
 ENV PIP_DEFAULT_TIMEOUT=180
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # 安装 uv（Rust 实现的包管理器，HTTP/2 并发 + 强重试，对国内烂网络容忍度远高于 pip）
 RUN pip install --no-cache-dir uv
 
