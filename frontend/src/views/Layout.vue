@@ -15,6 +15,9 @@
         <el-menu-item v-if="!user.isStaff" index="/dashboard">
           <el-icon><Histogram /></el-icon><span>学业完成度</span>
         </el-menu-item>
+        <el-menu-item v-if="!user.isStaff" index="/map">
+          <el-icon><Grid /></el-icon><span>学业地图</span>
+        </el-menu-item>
         <el-menu-item index="/warnings">
           <el-icon><BellFilled /></el-icon><span>预警</span>
         </el-menu-item>
@@ -50,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { BellFilled, ChatLineRound, DataAnalysis, Document, Histogram, Tools, User } from '@element-plus/icons-vue'
+import { BellFilled, ChatLineRound, DataAnalysis, Document, Grid, Histogram, Tools, User } from '@element-plus/icons-vue'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -65,6 +68,7 @@ const TITLES: Record<string, string> = {
   '/students': '学生管理',
   '/reports': '报表中心',
   '/dashboard': '学业完成度',
+  '/map': '学业地图',
   '/warnings': '预警',
   '/chat': 'AI 学业问答',
   '/admin': '管理后台',

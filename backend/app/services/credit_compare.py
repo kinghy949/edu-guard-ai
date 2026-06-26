@@ -211,3 +211,99 @@ def report_to_dict(r: ProgressReport) -> dict:
 def iter_progress(db: Session, students: Iterable[Student]) -> Iterable[ProgressReport]:
     for s in students:
         yield compute_student_progress(db, s)
+
+
+def build_academic_map(db: Session, student: Student) -> dict:
+    """学业地图：按学分桶分组返回方案课程及其状态。
+
+    每门课状态取值：
+      - completed: 该课最新成绩通过
+      - in_progress: 在修/重修中
+      - failed: 最新一次为 failed 且无后续 completed/in_progress
+      - retake: 在 retake 状态（视为 in_progress 的子类）
+      - not_taken: 学生从未修过
+    """
+    if not student.program_id:
+        return {"program_id": None, "buckets": [], "recommended": []}
+
+    program = db.get(Program, student.program_id)
+    buckets = list(db.scalars(select(CreditBucket).where(CreditBucket.program_id == student.program_id)))
+    pcs = list(db.scalars(select(ProgramCourse).where(ProgramCourse.program_id == student.program_id)))
+    if not pcs:
+        return {"program_id": program.id if program else None, "program_name": program.name if program else None,
+                "buckets": [], "recommended": []}
+    courses = {c.id: c for c in db.scalars(
+        select(Course).where(Course.id.in_([pc.course_id for pc in pcs]))
+    )}
+    grades = list(db.scalars(select(Grade).where(Grade.student_id == student.id)))
+    grades_by_course: dict[int, list[Grade]] = {}
+    for g in grades:
+        grades_by_course.setdefault(g.course_id, []).append(g)
+
+    def _status_for(course_id: int) -> tuple[str, Decimal | None, str | None]:
+        gs = sorted(grades_by_course.get(course_id, []),
+                    key=lambda g: g.semester, reverse=True)
+        if not gs:
+            return "not_taken", None, None
+        # 任一历史已通过 → completed
+        if any(g.status == GradeStatus.COMPLETED for g in gs):
+            for g in gs:
+                if g.status == GradeStatus.COMPLETED:
+                    return "completed", g.score, g.semester
+        latest = gs[0]
+        if latest.status == GradeStatus.IN_PROGRESS:
+            return "in_progress", latest.score, latest.semester
+        if latest.status == GradeStatus.RETAKE:
+            return "retake", latest.score, latest.semester
+        if latest.status == GradeStatus.FAILED:
+            return "failed", latest.score, latest.semester
+        return "not_taken", None, None
+
+    buckets_out = []
+    pcs_by_bucket: dict[int, list[ProgramCourse]] = {}
+    for pc in pcs:
+        pcs_by_bucket.setdefault(pc.bucket_id or 0, []).append(pc)
+
+    for b in buckets:
+        bucket_courses = []
+        for pc in pcs_by_bucket.get(b.id, []):
+            c = courses.get(pc.course_id)
+            if not c:
+                continue
+            status, score, semester = _status_for(c.id)
+            bucket_courses.append({
+                "id": c.id, "code": c.code, "name": c.name,
+                "credits": str(c.credits),
+                "is_required": pc.is_required,
+                "semester_suggested": pc.semester_suggested,
+                "status": status,
+                "score": str(score) if score is not None else None,
+                "semester": semester,
+            })
+        bucket_courses.sort(key=lambda x: (x["semester_suggested"] or 99, x["code"]))
+        buckets_out.append({
+            "bucket_id": b.id, "category": b.category,
+            "required": str(b.credits_required),
+            "courses": bucket_courses,
+        })
+
+    # 复用 compute_student_progress 提取的推荐补修课列表（含状态判断）
+    report = compute_student_progress(db, student)
+    recommended = []
+    for bp in report.buckets:
+        for c in bp.recommended:
+            recommended.append({
+                "bucket": bp.category,
+                "id": c.id, "code": c.code, "name": c.name,
+                "credits": str(c.credits),
+                "is_required": c.is_required,
+                "semester_suggested": c.semester_suggested,
+            })
+    recommended.sort(key=lambda x: (x["semester_suggested"] or 99, x["code"]))
+
+    return {
+        "program_id": program.id if program else None,
+        "program_name": program.name if program else None,
+        "buckets": buckets_out,
+        "recommended": recommended,
+    }

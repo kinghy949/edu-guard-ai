@@ -43,6 +43,44 @@ export interface ProgressReport {
   failed_courses: { id: number; code: string; name: string; credits: string }[]
 }
 
+export type CourseMapStatus = 'completed' | 'in_progress' | 'failed' | 'retake' | 'not_taken'
+
+export interface AcademicMapCourse {
+  id: number
+  code: string
+  name: string
+  credits: string
+  is_required: boolean
+  semester_suggested: number | null
+  status: CourseMapStatus
+  score: string | null
+  semester: string | null
+}
+
+export interface AcademicMapBucket {
+  bucket_id: number
+  category: string
+  required: string
+  courses: AcademicMapCourse[]
+}
+
+export interface AcademicMapRecommendation {
+  bucket: string
+  id: number
+  code: string
+  name: string
+  credits: string
+  is_required: boolean
+  semester_suggested: number | null
+}
+
+export interface AcademicMap {
+  program_id: number | null
+  program_name: string | null
+  buckets: AcademicMapBucket[]
+  recommended: AcademicMapRecommendation[]
+}
+
 export type WarningStatus = 'open' | 'following' | 'resolved' | 'ignored'
 export type WarningActionType = 'comment' | 'follow' | 'resolve' | 'ignore' | 'reopen'
 
@@ -117,8 +155,11 @@ export const authApi = {
 
 export const progressApi = {
   me: () => http.get<ProgressReport>('/progress/me').then((r) => r.data),
+  myMap: () => http.get<AcademicMap>('/progress/me/map').then((r) => r.data),
   student: (id: number) =>
     http.get<ProgressReport>(`/progress/${id}`).then((r) => r.data),
+  studentMap: (id: number) =>
+    http.get<AcademicMap>(`/progress/${id}/map`).then((r) => r.data),
 }
 
 export const warningsApi = {
