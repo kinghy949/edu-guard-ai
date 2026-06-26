@@ -217,11 +217,11 @@ docker compose -f docker-compose.prod.yml logs -f backend
 # 进入后端容器排查
 docker compose -f docker-compose.prod.yml exec backend bash
 
-# 备份数据库
-docker compose -f docker-compose.prod.yml exec db pg_dump -U eduguard eduguard > backup-$(date +%F).sql
+# 备份数据库（生成 backups/eduguard_YYYYmmdd_HHMM.dump，自动保留最近 14 份）
+scripts/db_backup.sh
 
-# 恢复
-cat backup-2026-05-21.sql | docker compose -f docker-compose.prod.yml exec -T db psql -U eduguard eduguard
+# 从备份恢复（会用 pg_restore --clean 清理并重建数据库对象）
+scripts/db_restore.sh backups/eduguard_20260626_0200.dump
 
 # 手动触发预警生成（按学院过滤）
 TOKEN=$(curl -s -X POST http://localhost/api/v1/auth/login -d "username=admin&password=<密码>" | jq -r .access_token)
@@ -239,7 +239,63 @@ docker compose -f docker-compose.prod.yml up -d
 
 ---
 
-## 五、批量导入说明
+## 五、数据库备份与恢复
+
+### 5.1 手动备份
+
+```bash
+scripts/db_backup.sh
+```
+
+默认行为：
+
+- 使用 `docker-compose.prod.yml` 的 `db` 服务。
+- 生成 PostgreSQL custom format 文件：`backups/eduguard_YYYYmmdd_HHMM.dump`。
+- 自动保留最近 14 份 `eduguard_*.dump`，删除更早文件。
+
+开发环境或自定义 compose 文件可覆盖：
+
+```bash
+COMPOSE_FILE=docker-compose.yml BACKUP_DIR=/data/eduguard-backups BACKUP_KEEP=30 scripts/db_backup.sh
+```
+
+### 5.2 定时备份
+
+宿主机 crontab 建议每天 02:00 执行：
+
+```cron
+0 2 * * * cd /opt/edu-guard-ai && /bin/bash scripts/db_backup.sh >> logs/db_backup.log 2>&1
+```
+
+上线前创建目录并限制权限：
+
+```bash
+mkdir -p /opt/edu-guard-ai/backups /opt/edu-guard-ai/logs
+chmod 700 /opt/edu-guard-ai/backups
+```
+
+### 5.3 恢复演练
+
+恢复会执行 `pg_restore --clean --if-exists`，目标库内同名对象会被清理后重建。生产恢复前必须先停止业务写入：
+
+```bash
+docker compose -f docker-compose.prod.yml stop backend frontend
+scripts/db_restore.sh backups/eduguard_20260626_0200.dump
+docker compose -f docker-compose.prod.yml up -d backend frontend
+```
+
+恢复后检查：
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+curl -fsS http://127.0.0.1/health
+```
+
+建议每月至少在测试服务器做一次恢复演练：先导入一批测试数据，执行备份，删除该批数据，再恢复并核对学生、成绩、预警、通知记录是否完整。
+
+---
+
+## 六、批量导入说明
 
 详见 [`import-templates.md`](import-templates.md)。
 四类入口都在 **管理后台 → 批量导入**：
@@ -253,7 +309,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ---
 
-## 六、数据合规清单
+## 七、数据合规清单
 
 试点期间按最小化原则采集和使用学生数据：
 
@@ -267,7 +323,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ---
 
-## 七、单 worker 约束（重要）
+## 八、单 worker 约束（重要）
 
 定时任务使用进程内 APScheduler 调度，登录限流使用进程内计数器。
 **生产部署必须保持 uvicorn 单 worker**，否则会出现：
