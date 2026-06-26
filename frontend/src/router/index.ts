@@ -22,6 +22,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'reports', component: () => import('../views/Reports.vue'), meta: { staff: true } },
       { path: 'reports/print', component: () => import('../views/ReportPrint.vue'), meta: { staff: true } },
       { path: 'warnings', component: () => import('../views/Warnings.vue') },
+      { path: 'messages', component: () => import('../views/Messages.vue') },
       { path: 'chat', component: () => import('../views/Chat.vue') },
       { path: 'admin', component: () => import('../views/Admin.vue'), meta: { staff: true } },
     ],

@@ -20,6 +20,12 @@ class NotificationRead(TimestampRead):
     read_at: datetime | None = None
 
 
+class NotificationPage(ORMBase):
+    items: list[NotificationRead]
+    total: int
+    unread_count: int
+
+
 class NotificationConfigRead(TimestampRead):
     channel: str
     enabled: bool

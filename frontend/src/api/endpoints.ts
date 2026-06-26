@@ -108,6 +108,25 @@ export interface WarningAction {
   created_at: string
 }
 
+export interface InboxNotification {
+  id: number
+  warning_id: number | null
+  user_id: number | null
+  channel: string
+  target: string
+  status: string
+  sent_at: string | null
+  error: string | null
+  payload: Record<string, unknown> | null
+  subject: string | null
+  content: string | null
+  retry_count: number
+  next_attempt_at: string | null
+  read_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ChatSession {
   id: number
   user_id: number
@@ -475,6 +494,13 @@ export const auditApi = {
 }
 
 export const notificationsApi = {
+  me: (params?: { unread_only?: boolean; page?: number; size?: number }) =>
+    http
+      .get<{ items: InboxNotification[]; total: number; unread_count: number }>('/notifications/me', { params })
+      .then((r) => r.data),
+  markRead: (id: number) =>
+    http.post<InboxNotification>(`/notifications/${id}/read`).then((r) => r.data),
+  readAll: () => http.post<{ updated: number }>('/notifications/me/read-all').then((r) => r.data),
   listConfigs: () =>
     http.get('/notifications/configs/all').then((r) => r.data),
   upsertConfig: (

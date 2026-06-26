@@ -1,6 +1,8 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession, require_admin, require_staff
 from app.api.v1._helpers import apply_updates, get_or_404
@@ -10,6 +12,7 @@ from app.models.warning import Warning
 from app.schemas.notification import (
     NotificationConfigRead,
     NotificationConfigUpdate,
+    NotificationPage,
     NotificationRead,
 )
 from app.services.audit import record_audit
@@ -46,6 +49,79 @@ def get_notification(notification_id: int, db: DbSession, current: CurrentUser):
     if current.role == UserRole.STUDENT and n.user_id != current.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该通知")
     return n
+
+
+@router.get("/me", response_model=NotificationPage, summary="当前用户站内信列表")
+def my_notifications(
+    db: DbSession,
+    current: CurrentUser,
+    unread_only: bool = False,
+    page: int = 1,
+    size: int = 20,
+):
+    page = max(page, 1)
+    size = min(max(size, 1), 100)
+    base = (
+        select(Notification)
+        .where(Notification.user_id == current.id)
+        .where(Notification.channel == "inbox")
+    )
+    if unread_only:
+        base = base.where(Notification.read_at.is_(None))
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    unread_count = db.scalar(
+        select(func.count()).select_from(
+            select(Notification.id)
+            .where(Notification.user_id == current.id)
+            .where(Notification.channel == "inbox")
+            .where(Notification.read_at.is_(None))
+            .subquery()
+        )
+    ) or 0
+    items = list(db.scalars(
+        base.order_by(Notification.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    ))
+    return {"items": items, "total": total, "unread_count": unread_count}
+
+
+@router.post("/{notification_id:int}/read", response_model=NotificationRead, summary="标记当前用户站内信已读")
+def mark_read(notification_id: int, db: DbSession, current: CurrentUser, request: Request):
+    n = get_or_404(db, Notification, notification_id, "通知")
+    if n.user_id != current.id or n.channel != "inbox":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权操作该通知")
+    if n.read_at is None:
+        n.read_at = datetime.now(timezone.utc)
+        record_audit(
+            db, user=current, action="notifications.read",
+            resource_type="notification", resource_id=str(n.id),
+            request=request,
+        )
+    db.commit()
+    db.refresh(n)
+    return n
+
+
+@router.post("/me/read-all", summary="标记当前用户全部站内信已读")
+def mark_all_read(db: DbSession, current: CurrentUser, request: Request):
+    rows = list(db.scalars(
+        select(Notification)
+        .where(Notification.user_id == current.id)
+        .where(Notification.channel == "inbox")
+        .where(Notification.read_at.is_(None))
+    ))
+    now = datetime.now(timezone.utc)
+    for n in rows:
+        n.read_at = now
+    if rows:
+        record_audit(
+            db, user=current, action="notifications.read_all",
+            detail={"count": len(rows)},
+            request=request,
+        )
+    db.commit()
+    return {"updated": len(rows)}
 
 
 # ----- 渠道配置（管理员） -----
@@ -143,8 +219,6 @@ def dispatch_for_warning(warning_id: int, payload: DispatchWarningRequest, db: D
 
 @router.post("/{notification_id}/resend", dependencies=[Depends(require_staff)], summary="重置失败/任意通知到队列重发")
 def resend(notification_id: int, db: DbSession):
-    from datetime import datetime, timezone
-
     n = get_or_404(db, Notification, notification_id, "通知")
     n.status = NotificationStatus.PENDING
     n.retry_count = 0

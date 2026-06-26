@@ -21,6 +21,9 @@
         <el-menu-item index="/warnings">
           <el-icon><BellFilled /></el-icon><span>预警</span>
         </el-menu-item>
+        <el-menu-item index="/messages">
+          <el-icon><Message /></el-icon><span>消息中心</span>
+        </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatLineRound /></el-icon><span>AI 学业问答</span>
         </el-menu-item>
@@ -32,6 +35,9 @@
     <el-container>
       <el-header class="header">
         <div class="title">{{ pageTitle }}</div>
+        <el-badge :value="unreadCount" :hidden="!unreadCount" class="bell">
+          <el-button :icon="BellFilled" circle @click="router.push('/messages')" />
+        </el-badge>
         <el-dropdown>
           <span class="user">
             {{ user.profile?.display_name || user.profile?.username }}
@@ -53,15 +59,28 @@
 </template>
 
 <script setup lang="ts">
-import { BellFilled, ChatLineRound, DataAnalysis, Document, Grid, Histogram, Tools, User } from '@element-plus/icons-vue'
-import { computed } from 'vue'
+import {
+  BellFilled,
+  ChatLineRound,
+  DataAnalysis,
+  Document,
+  Grid,
+  Histogram,
+  Message,
+  Tools,
+  User,
+} from '@element-plus/icons-vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { notificationsApi } from '../api/endpoints'
 import { useUserStore } from '../stores/user'
 
 const route = useRoute()
 const router = useRouter()
 const user = useUserStore()
+const unreadCount = ref(0)
+let unreadTimer: number | undefined
 
 const TITLES: Record<string, string> = {
   '/workbench': '辅导员工作台',
@@ -70,6 +89,7 @@ const TITLES: Record<string, string> = {
   '/dashboard': '学业完成度',
   '/map': '学业地图',
   '/warnings': '预警',
+  '/messages': '消息中心',
   '/chat': 'AI 学业问答',
   '/admin': '管理后台',
 }
@@ -86,6 +106,25 @@ function logout() {
   user.logout()
   router.push('/login')
 }
+
+async function loadUnreadCount() {
+  if (!user.isLoggedIn) return
+  try {
+    const data = await notificationsApi.me({ page: 1, size: 1 })
+    unreadCount.value = data.unread_count
+  } catch {
+    // 顶栏角标不打扰主流程
+  }
+}
+
+onMounted(() => {
+  loadUnreadCount()
+  unreadTimer = window.setInterval(loadUnreadCount, 60_000)
+})
+
+onUnmounted(() => {
+  if (unreadTimer) window.clearInterval(unreadTimer)
+})
 </script>
 
 <style scoped>
@@ -93,8 +132,9 @@ function logout() {
 .aside { background: #1f2937; color: #fff; }
 .logo { color: #fff; font-size: 15px; font-weight: 600; padding: 18px 16px; letter-spacing: 0.5px; line-height: 1.4; }
 :deep(.el-menu) { border-right: none; }
-.header { display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #eee; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 14px; background: #fff; border-bottom: 1px solid #eee; }
 .title { font-size: 18px; font-weight: 600; }
+.bell { margin-left: auto; }
 .user { cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
 .el-main { background: #f8fafc; }
 </style>
