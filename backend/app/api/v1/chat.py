@@ -7,8 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.ai import NO_CONTEXT_HINT, SYSTEM_PROMPT, LLMError, build_student_context, chat, chat_stream, load_runtime
+from app.ai.budget import fit_messages
 from app.api.deps import CurrentUser, DbSession
 from app.api.v1._helpers import get_or_404
+from app.core.config import settings
 from app.models.chat import ChatMessage, ChatSession
 from app.models.student import Student
 from app.models.user import UserRole
@@ -54,7 +56,7 @@ def _build_messages(db, current, session: ChatSession, user_input: str) -> list[
     for m in reversed(history):
         messages.append({"role": m.role, "content": m.content})
     messages.append({"role": "user", "content": user_input})
-    return messages
+    return fit_messages(messages, settings.LLM_MAX_CONTEXT_TOKENS)
 
 
 @router.get("/sessions", response_model=list[ChatSessionRead])

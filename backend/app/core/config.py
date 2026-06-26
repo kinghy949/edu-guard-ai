@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://api.openai.com/v1"
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "gpt-4o-mini"
+    # 发送给 LLM 的上下文 token 估算上限（轻量估算，不引入 tiktoken）
+    LLM_MAX_CONTEXT_TOKENS: int = 6000
 
     SMTP_ENABLED: bool = False
     WECOM_ENABLED: bool = False
