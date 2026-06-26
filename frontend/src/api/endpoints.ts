@@ -204,6 +204,7 @@ export const warningsApi = {
 
 export const chatApi = {
   sessions: () => http.get<ChatSession[]>('/chat/sessions').then((r) => r.data),
+  quota: () => http.get<{ limit: number; used: number; remaining: number | null }>('/chat/quota').then((r) => r.data),
   createSession: (title?: string) =>
     http.post<ChatSession>('/chat/sessions', { title }).then((r) => r.data),
   messages: (sessionId: number) =>

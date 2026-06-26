@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-4o-mini"
     # 发送给 LLM 的上下文 token 估算上限（轻量估算，不引入 tiktoken）
     LLM_MAX_CONTEXT_TOKENS: int = 6000
+    # 每用户每日 AI 用户消息上限；0 表示不限
+    CHAT_DAILY_MESSAGE_LIMIT: int = 50
 
     SMTP_ENABLED: bool = False
     WECOM_ENABLED: bool = False

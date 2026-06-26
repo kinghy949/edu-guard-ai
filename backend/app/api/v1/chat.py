@@ -1,10 +1,11 @@
 import json
+from datetime import datetime, time, timezone
 from typing import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.ai import NO_CONTEXT_HINT, SYSTEM_PROMPT, LLMError, build_student_context, chat, chat_stream, load_runtime
 from app.ai.budget import fit_messages
@@ -32,6 +33,33 @@ class SendMessageRequest(BaseModel):
 def _ensure_owner(session: ChatSession, current) -> None:
     if session.user_id != current.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
+
+
+def _daily_user_message_count(db, user_id: int) -> int:
+    today_start = datetime.combine(datetime.now(timezone.utc).date(), time.min, tzinfo=timezone.utc)
+    return db.scalar(
+        select(func.count(ChatMessage.id))
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .where(ChatSession.user_id == user_id)
+        .where(ChatMessage.role == "user")
+        .where(ChatMessage.created_at >= today_start)
+    ) or 0
+
+
+def _quota_payload(db, user_id: int) -> dict[str, int | None]:
+    limit = settings.CHAT_DAILY_MESSAGE_LIMIT
+    used = _daily_user_message_count(db, user_id)
+    if limit <= 0:
+        return {"limit": 0, "used": used, "remaining": None}
+    return {"limit": limit, "used": used, "remaining": max(limit - used, 0)}
+
+
+def _ensure_quota(db, user_id: int) -> None:
+    quota = _quota_payload(db, user_id)
+    limit = quota["limit"]
+    remaining = quota["remaining"]
+    if isinstance(limit, int) and limit > 0 and remaining == 0:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "今日 AI 对话次数已用完")
 
 
 def _build_messages(db, current, session: ChatSession, user_input: str) -> list[dict[str, str]]:
@@ -68,6 +96,11 @@ def list_sessions(db: DbSession, current: CurrentUser):
     ).all()
 
 
+@router.get("/quota", summary="当前用户 AI 对话额度")
+def quota(db: DbSession, current: CurrentUser):
+    return _quota_payload(db, current.id)
+
+
 @router.post("/sessions", response_model=ChatSessionRead)
 def create_session(payload: CreateSessionRequest, db: DbSession, current: CurrentUser):
     session = ChatSession(user_id=current.id, title=payload.title or "新会话")
@@ -92,6 +125,7 @@ def list_messages(session_id: int, db: DbSession, current: CurrentUser):
 def send_message(session_id: int, payload: SendMessageRequest, db: DbSession, current: CurrentUser):
     session = get_or_404(db, ChatSession, session_id, "会话")
     _ensure_owner(session, current)
+    _ensure_quota(db, current.id)
 
     db.add(ChatMessage(session_id=session.id, role="user", content=payload.content))
     db.flush()
@@ -115,6 +149,7 @@ def send_message(session_id: int, payload: SendMessageRequest, db: DbSession, cu
 async def stream_message(session_id: int, payload: SendMessageRequest, db: DbSession, current: CurrentUser):
     session = get_or_404(db, ChatSession, session_id, "会话")
     _ensure_owner(session, current)
+    _ensure_quota(db, current.id)
 
     db.add(ChatMessage(session_id=session.id, role="user", content=payload.content))
     db.commit()

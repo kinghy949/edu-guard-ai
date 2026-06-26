@@ -22,14 +22,22 @@
 
     <el-card class="conversation">
       <template #header>
-        <span>{{ current?.title || '请选择或新建会话' }}</span>
+        <div class="conv-head">
+          <span>{{ current?.title || '请选择或新建会话' }}</span>
+          <span v-if="quota" class="quota">
+            今日 {{ quota.used }} / {{ quota.limit || '不限' }}
+          </span>
+        </div>
       </template>
 
       <div class="messages" ref="msgsEl">
         <div v-for="m in messages" :key="m.id || m.content" :class="['msg', m.role]">
           <div class="role">{{ m.role === 'user' ? '我' : 'AI 助手' }}</div>
           <div class="bubble" v-if="m.role === 'user'">{{ m.content }}</div>
-          <div class="bubble markdown" v-else v-html="render(m.content)"></div>
+          <div v-else>
+            <div class="bubble markdown" v-html="render(m.content)"></div>
+            <div class="ai-note">AI 生成，仅供参考，以学校正式通知为准。</div>
+          </div>
         </div>
         <div v-if="streaming" class="msg assistant">
           <div class="role">AI 助手</div>
@@ -40,14 +48,24 @@
       </div>
 
       <div class="composer">
-        <el-input
-          v-model="input"
-          type="textarea"
-          :rows="2"
-          placeholder="问我「我还差什么没修？」「下学期建议选什么？」"
-          @keydown.enter.exact.prevent="send"
-        />
-        <el-button type="primary" :loading="streaming" :disabled="!current" @click="send">发送</el-button>
+        <div class="composer-main">
+          <el-input
+            v-model="input"
+            type="textarea"
+            :rows="2"
+            placeholder="问我「我还差什么没修？」「下学期建议选什么？」"
+            @keydown.enter.exact.prevent="send"
+          />
+          <div class="disclaimer">回答仅供参考，具体以教务处文件、培养方案原文和学校正式通知为准。</div>
+        </div>
+        <el-button
+          type="primary"
+          :loading="streaming"
+          :disabled="!current || quotaRemaining === 0"
+          @click="send"
+        >
+          发送
+        </el-button>
       </div>
     </el-card>
   </div>
@@ -58,7 +76,7 @@ import { Delete } from '@element-plus/icons-vue'
 import DOMPurify from 'dompurify'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 
 import { apiBase } from '../api'
 import { chatApi, type ChatMessage, type ChatSession } from '../api/endpoints'
@@ -80,12 +98,20 @@ const input = ref('')
 const streaming = ref(false)
 const streamingText = ref('')
 const msgsEl = ref<HTMLDivElement | null>(null)
+const quota = ref<{ limit: number; used: number; remaining: number | null } | null>(null)
+
+const quotaRemaining = computed(() => quota.value?.remaining ?? null)
 
 async function loadSessions() {
+  await loadQuota()
   sessions.value = await chatApi.sessions()
   if (sessions.value.length && !current.value) {
     await select(sessions.value[0].id)
   }
+}
+
+async function loadQuota() {
+  quota.value = await chatApi.quota()
 }
 
 async function newSession() {
@@ -142,7 +168,16 @@ async function send() {
       },
       body: JSON.stringify({ content: text }),
     })
-    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
+    if (!resp.ok || !resp.body) {
+      let message = `HTTP ${resp.status}`
+      try {
+        const data = await resp.json()
+        message = data.detail || message
+      } catch {
+        // ignore
+      }
+      throw new Error(message)
+    }
     const reader = resp.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
@@ -188,6 +223,7 @@ async function send() {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
+    await loadQuota()
   } catch (e) {
     ElMessage.error('对话失败：' + (e as Error).message)
   } finally {
@@ -210,6 +246,8 @@ onMounted(loadSessions)
 .sessions .del { opacity: 0.5; }
 .sessions .del:hover { color: #dc2626; opacity: 1; }
 .conversation { display: flex; flex-direction: column; }
+.conv-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.quota, .disclaimer, .ai-note { color: #94a3b8; font-size: 12px; }
 :deep(.conversation .el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .messages { flex: 1; overflow: auto; padding: 8px 0; }
 .msg { margin-bottom: 14px; }
@@ -219,6 +257,7 @@ onMounted(loadSessions)
 .msg.user { text-align: right; }
 .msg.user .bubble { background: #dbeafe; color: #1e3a8a; }
 .msg.assistant .bubble { background: #f1f5f9; color: #0f172a; }
+.ai-note { margin-top: 4px; }
 .bubble.markdown { line-height: 1.7; }
 .bubble.markdown :deep(p) { margin: 0 0 8px; }
 .bubble.markdown :deep(p:last-child) { margin-bottom: 0; }
@@ -253,5 +292,6 @@ onMounted(loadSessions)
 .cursor { animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 .composer { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+.composer-main { flex: 1; display: grid; gap: 4px; }
 .composer .el-button { align-self: flex-end; }
 </style>
