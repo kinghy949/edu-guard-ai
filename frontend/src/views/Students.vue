@@ -41,6 +41,12 @@
     <el-table :data="items" v-loading="loading" border style="margin-top: 12px">
       <el-table-column prop="student_no" label="学号" width="120" />
       <el-table-column prop="name" label="姓名" width="120" />
+      <el-table-column label="邮箱" width="170">
+        <template #default="{ row }">{{ maskEmail(row.email) }}</template>
+      </el-table-column>
+      <el-table-column label="手机" width="130">
+        <template #default="{ row }">{{ maskPhone(row.phone) }}</template>
+      </el-table-column>
       <el-table-column prop="college" label="学院" width="140" />
       <el-table-column prop="major" label="专业" width="140" />
       <el-table-column prop="class_name" label="班级" width="120" />
@@ -81,6 +87,7 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { studentsApi, type StudentListItem } from '../api/endpoints'
+import { maskEmail, maskPhone } from '../utils/mask'
 
 const route = useRoute()
 const router = useRouter()

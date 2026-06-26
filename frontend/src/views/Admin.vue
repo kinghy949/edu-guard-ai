@@ -409,7 +409,7 @@
           <el-table-column prop="resource_type" label="资源类型" width="120" />
           <el-table-column prop="resource_id" label="资源ID" width="120" />
           <el-table-column label="详情">
-            <template #default="{ row }"><pre style="margin:0;font-size:12px">{{ JSON.stringify(row.detail, null, 2) }}</pre></template>
+            <template #default="{ row }"><pre style="margin:0;font-size:12px">{{ JSON.stringify(maskAuditDetail(row.detail), null, 2) }}</pre></template>
           </el-table-column>
         </el-table>
         <el-pagination
@@ -436,8 +436,24 @@ import {
   type WarningSchedule,
 } from '../api/endpoints'
 import { useUserStore } from '../stores/user'
+import { maskEmail, maskPhone } from '../utils/mask'
 
 const user = useUserStore()
+
+function maskAuditDetail(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => maskAuditDetail(item))
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => {
+      const lowered = key.toLowerCase()
+      if (typeof item === 'string' && lowered.includes('email')) return [key, maskEmail(item)]
+      if (typeof item === 'string' && (lowered.includes('phone') || lowered.includes('mobile'))) {
+        return [key, maskPhone(item)]
+      }
+      return [key, maskAuditDetail(item)]
+    }),
+  )
+}
 const tab = ref('imports')
 
 const IMPORT_KINDS = [

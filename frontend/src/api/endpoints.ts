@@ -372,6 +372,8 @@ export interface StudentRead {
   student_no: string
   name: string
   gender: string | null
+  email: string | null
+  phone: string | null
   enroll_year: number
   college: string
   major: string

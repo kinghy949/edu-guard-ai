@@ -9,6 +9,15 @@
           <el-descriptions :column="2" border>
             <el-descriptions-item label="学号">{{ student.student_no }}</el-descriptions-item>
             <el-descriptions-item label="姓名">{{ student.name }}</el-descriptions-item>
+            <el-descriptions-item label="邮箱">
+              {{ showContact ? (student.email ?? '-') : maskEmail(student.email) }}
+              <el-button link size="small" @click="showContact = !showContact">
+                {{ showContact ? '隐藏' : '显示' }}
+              </el-button>
+            </el-descriptions-item>
+            <el-descriptions-item label="手机">
+              {{ showContact ? (student.phone ?? '-') : maskPhone(student.phone) }}
+            </el-descriptions-item>
             <el-descriptions-item label="学院">{{ student.college }}</el-descriptions-item>
             <el-descriptions-item label="专业">{{ student.major }}</el-descriptions-item>
             <el-descriptions-item label="班级">{{ student.class_name ?? '-' }}</el-descriptions-item>
@@ -109,6 +118,7 @@ import {
   progressApi, type ProgressReport, studentsApi, type StudentRead,
   type TranscriptSemester, warningsApi, type Warning,
 } from '../api/endpoints'
+import { maskEmail, maskPhone } from '../utils/mask'
 
 const route = useRoute()
 const id = Number(route.params.id)
@@ -117,6 +127,7 @@ const student = ref<StudentRead | null>(null)
 const progress = ref<ProgressReport | null>(null)
 const transcript = ref<TranscriptSemester[]>([])
 const warnings = ref<Warning[]>([])
+const showContact = ref(false)
 
 const STATUS_LABEL: Record<string, string> = {
   completed: '已修', in_progress: '在修', failed: '挂科', retake: '重修',

@@ -27,6 +27,8 @@ class StudentRead(TimestampRead):
     student_no: str
     name: str
     gender: str | None
+    email: str | None = None
+    phone: str | None = None
     enroll_year: int
     college: str
     major: str

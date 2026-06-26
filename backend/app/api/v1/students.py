@@ -30,6 +30,14 @@ def _ensure_can_read(current: User, student: Student) -> None:
     raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该学生")
 
 
+def _student_read(db: DbSession, student: Student) -> StudentRead:
+    user = db.get(User, student.user_id)
+    data = StudentRead.model_validate(student, from_attributes=True).model_dump()
+    data["email"] = user.email if user else None
+    data["phone"] = user.phone if user else None
+    return StudentRead.model_validate(data)
+
+
 @router.get("", response_model=StudentListPage, dependencies=[Depends(require_staff)])
 def list_students(
     db: DbSession,
@@ -64,7 +72,8 @@ def list_students(
     )
 
     stmt = (
-        select(Student, StudentProgressSnapshot.completion_ratio, open_w.c.max_rank)
+        select(Student, User.email, User.phone, StudentProgressSnapshot.completion_ratio, open_w.c.max_rank)
+        .join(User, User.id == Student.user_id)
         .outerjoin(StudentProgressSnapshot, StudentProgressSnapshot.student_id == Student.id)
         .outerjoin(open_w, open_w.c.sid == Student.id)
     )
@@ -130,8 +139,10 @@ def list_students(
 
     items: list[StudentListItem] = []
     rank_to_level = {3: "severe", 2: "warn", 1: "info"}
-    for student, completion, max_rank in rows:
+    for student, email, phone, completion, max_rank in rows:
         item_data = StudentListItem.model_validate(student, from_attributes=True).model_dump()
+        item_data["email"] = email
+        item_data["phone"] = phone
         item_data["completion_ratio"] = float(completion) if completion is not None else None
         item_data["open_warning_level"] = rank_to_level.get(int(max_rank)) if max_rank else None
         items.append(StudentListItem.model_validate(item_data))
@@ -150,7 +161,7 @@ def create_student(payload: StudentCreate, db: DbSession):
     db.add(student)
     db.commit()
     db.refresh(student)
-    return student
+    return _student_read(db, student)
 
 
 @router.get("/me", response_model=StudentRead)
@@ -158,14 +169,14 @@ def my_profile(db: DbSession, current: CurrentUser):
     student = db.scalar(select(Student).where(Student.user_id == current.id))
     if not student:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "未关联学生信息")
-    return student
+    return _student_read(db, student)
 
 
 @router.get("/{student_id}", response_model=StudentRead)
 def get_student(student_id: int, db: DbSession, current: CurrentUser):
     student = get_or_404(db, Student, student_id, "学生")
     _ensure_can_read(current, student)
-    return student
+    return _student_read(db, student)
 
 
 @router.patch("/{student_id}", response_model=StudentRead, dependencies=[Depends(require_staff)])
@@ -174,7 +185,7 @@ def update_student(student_id: int, payload: StudentUpdate, db: DbSession):
     apply_updates(student, payload.model_dump(exclude_unset=True))
     db.commit()
     db.refresh(student)
-    return student
+    return _student_read(db, student)
 
 
 @router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_staff)])

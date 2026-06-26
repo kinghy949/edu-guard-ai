@@ -50,7 +50,75 @@ docker compose -f docker-compose.prod.yml exec backend python -m scripts.seed_de
 
 ## 反向代理与 HTTPS
 
-生产建议在前端 nginx 前再套一层网关（Caddy / Traefik / 云厂商 SLB）配 HTTPS。本仓库内置 nginx 仅做静态托管 + 后端反代，未启用 TLS。
+生产必须启用 HTTPS。以下示例以 Ubuntu + nginx + certbot 为准，域名示例为
+`eduguard.example.edu.cn`，请替换为学校实际域名。
+
+### 1. DNS 与防火墙
+
+确认域名 A/AAAA 记录已指向服务器公网 IP，安全组放行 80/443。
+
+生产若使用宿主机 nginx 统一处理 TLS，请先把 `docker-compose.prod.yml`
+中 frontend 的端口改为仅监听本机 8080，避免容器占用宿主 80：
+
+```yaml
+frontend:
+  ports:
+    - "127.0.0.1:8080:80"
+```
+
+### 2. 安装 nginx 与 certbot
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+```
+
+### 3. 先配置 HTTP 反向代理
+
+`/etc/nginx/sites-available/eduguard.conf`：
+
+```nginx
+server {
+    listen 80;
+    server_name eduguard.example.edu.cn;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+启用并检查：
+
+```bash
+sudo ln -sf /etc/nginx/sites-available/eduguard.conf /etc/nginx/sites-enabled/eduguard.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 4. 签发证书并强制 80 跳 443
+
+```bash
+sudo certbot --nginx -d eduguard.example.edu.cn --redirect
+sudo certbot renew --dry-run
+```
+
+`--redirect` 会把 HTTP 自动改为 301 跳转 HTTPS。签发后确认：
+
+```bash
+curl -I http://eduguard.example.edu.cn
+curl -I https://eduguard.example.edu.cn
+```
+
+生产 `.env` 中的 CORS 必须同步改为 HTTPS 域名：
+
+```bash
+CORS_ORIGINS=https://eduguard.example.edu.cn
+```
 
 ## 备份
 

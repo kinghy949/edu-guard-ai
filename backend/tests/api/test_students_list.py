@@ -29,6 +29,28 @@ def test_pagination_total_and_items(client, db):
     assert len(body["items"]) == 2
 
 
+def test_student_contact_fields_come_from_linked_user(client, db):
+    staff = _staff(db)
+    user = make_user(
+        db,
+        role="student",
+        username="contact_user",
+        email="student@example.edu",
+        phone="13800001234",
+    )
+    student = make_student(db, student_no="M0001", user=user)
+    db.commit()
+
+    listed = client.get("/api/v1/students?keyword=M0001", headers=auth_header(staff)).json()
+    row = next(i for i in listed["items"] if i["student_no"] == "M0001")
+    assert row["email"] == "student@example.edu"
+    assert row["phone"] == "13800001234"
+
+    detail = client.get(f"/api/v1/students/{student.id}", headers=auth_header(staff)).json()
+    assert detail["email"] == "student@example.edu"
+    assert detail["phone"] == "13800001234"
+
+
 def test_keyword_and_class_filter(client, db):
     staff = _staff(db)
     program, _ = make_program_with_buckets(db)
