@@ -19,7 +19,8 @@ services:
       context: ./backend
       args:
         # 国内构建建议设为 https://pypi.tuna.tsinghua.edu.cn/simple 加速
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
     env_file: ./backend/.env
     depends_on:
       db:
@@ -29,7 +30,7 @@ services:
              python -m scripts.bootstrap &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
